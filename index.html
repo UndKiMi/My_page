@@ -677,13 +677,23 @@
     }
     
     /* Sens Critique Section */
+    .senscritique-titles {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+      margin-bottom: 15px;
+    }
+    
+    .senscritique-titles h2,
+    .senscritique-titles .sc-reviews-section-title {
+      margin-bottom: 0;
+    }
+    
     .senscritique-container {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: clamp(15px, 2vw, 20px);
-      margin-top: 0;
+      gap: 15px;
       margin-bottom: 15px;
-      max-height: 450px;
     }
     
     .sc-profile-card {
@@ -746,12 +756,6 @@
       flex-shrink: 0;
     }
     
-    .sc-reviews-section {
-      display: flex;
-      flex-direction: column;
-      height: 100%;
-    }
-    
     .sc-reviews-section-title {
       font-size: 1.3rem;
       font-weight: 800;
@@ -788,7 +792,7 @@
       padding: 20px;
       display: flex;
       flex-direction: column;
-      flex: 1;
+      height: 100%;
       max-height: 450px;
       overflow: hidden;
     }
@@ -1085,7 +1089,9 @@
     
     /* Tablet landscape */
     @media (max-width: 900px) {
+      .senscritique-titles { grid-template-columns: 1fr; }
       .senscritique-container { grid-template-columns: 1fr; }
+      .projects-activity-titles { grid-template-columns: 1fr; }
       .projects-activity-container { grid-template-columns: 1fr; }
       .sc-profile-card, .sc-recent-reviews { height: auto; }
       .sc-favorite-item {
@@ -1215,7 +1221,10 @@
       
       <!-- Section Sens Critique -->
       <section id="senscritique" class="section" aria-labelledby="senscritique-heading">
-        <h2 id="senscritique-heading">Sens-Critique</h2>
+        <div class="senscritique-titles">
+          <h2 id="senscritique-heading">Sens-Critique</h2>
+          <a href="https://www.senscritique.com/KiMi_/critiques" target="_blank" rel="noopener noreferrer" class="sc-reviews-section-title">Critiques Récentes</a>
+        </div>
         <div class="senscritique-container">
           <div class="sc-profile-card">
             <div class="sc-header">
@@ -1263,9 +1272,7 @@
             </div>
           </div>
           
-          <div class="sc-reviews-section">
-            <a href="https://www.senscritique.com/KiMi_/critiques" target="_blank" rel="noopener noreferrer" class="sc-reviews-section-title">Critiques Récentes</a>
-            <div class="sc-recent-reviews">
+          <div class="sc-recent-reviews">
               <div id="sc-reviews-container" class="sc-reviews-container">
                 <div class="sc-loading">Chargement des critiques...</div>
               </div>

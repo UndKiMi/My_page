@@ -1,6 +1,7 @@
 const express = require('express');
 const { Client, GatewayIntentBits } = require('discord.js');
 const cors = require('cors');
+const https = require('https');
 const { fetchSensCritiqueProfile } = require('./senscritique-scraper');
 const fs = require('fs');
 const path = require('path');
@@ -21,6 +22,11 @@ app.use(express.static('.', { maxAge: STATIC_MAX_AGE }));
 let cachedSensCritique = null;
 let lastSCFetch = 0;
 const SC_CACHE_DURATION = 3600000;
+
+let cachedGitHub = null;
+let lastGitHubFetch = 0;
+const GITHUB_CACHE_DURATION = 600000; // 10 minutes
+const GITHUB_USERNAME = process.env.GITHUB_USERNAME || 'UndKiMi';
 
 const TOKEN = process.env.DISCORD_TOKEN;
 const TARGET_USER_ID = process.env.DISCORD_USER_ID || "558793081663782913";
@@ -259,6 +265,110 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Fonction helper pour faire des requêtes HTTPS
+function httpsRequest(url, options = {}) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'application/vnd.github.v3+json',
+        ...options.headers
+      }
+    }, (res) => {
+      let data = '';
+      res.on('data', (chunk) => data += chunk);
+      res.on('end', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          try {
+            resolve(JSON.parse(data));
+          } catch (e) {
+            reject(new Error('Invalid JSON response'));
+          }
+        } else {
+          reject(new Error(`HTTP ${res.statusCode}: ${res.statusMessage}`));
+        }
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(10000, () => {
+      req.destroy();
+      reject(new Error('Request timeout'));
+    });
+  });
+}
+
+app.get('/github', async (req, res) => {
+  try {
+    const now = Date.now();
+    
+    // Vérifier le cache
+    if (cachedGitHub && (now - lastGitHubFetch) < GITHUB_CACHE_DURATION) {
+      console.log('📦 Utilisation du cache GitHub');
+      return res.json(cachedGitHub);
+    }
+    
+    console.log('🔍 Récupération des données GitHub...');
+    
+    // Récupérer les données GitHub en parallèle
+    const [user, repos, events] = await Promise.all([
+      httpsRequest(`https://api.github.com/users/${GITHUB_USERNAME}`).catch(err => {
+        console.warn('⚠️  Erreur récupération user GitHub:', err.message);
+        return null;
+      }),
+      httpsRequest(`https://api.github.com/users/${GITHUB_USERNAME}/repos?sort=updated&per_page=10`).catch(err => {
+        console.warn('⚠️  Erreur récupération repos GitHub:', err.message);
+        return [];
+      }),
+      httpsRequest(`https://api.github.com/users/${GITHUB_USERNAME}/events?per_page=100`).catch(err => {
+        console.warn('⚠️  Erreur récupération events GitHub:', err.message);
+        return [];
+      })
+    ]);
+    
+    if (!user) {
+      throw new Error('Impossible de récupérer les données utilisateur GitHub');
+    }
+    
+    const githubData = {
+      user,
+      repos: repos || [],
+      events: events || []
+    };
+    
+    cachedGitHub = githubData;
+    lastGitHubFetch = now;
+    
+    console.log('✅ Données GitHub récupérées:', {
+      username: user.login,
+      repos: repos?.length || 0,
+      events: events?.length || 0
+    });
+    
+    res.json(githubData);
+    
+  } catch (error) {
+    console.error('❌ Erreur GitHub:', error.message);
+    res.status(500).json({
+      error: 'Impossible de récupérer les données GitHub',
+      message: error.message
+    });
+  }
+});
+
+app.get('/github/commits/:owner/:repo', async (req, res) => {
+  try {
+    const { owner, repo } = req.params;
+    const commits = await httpsRequest(`https://api.github.com/repos/${owner}/${repo}/commits?per_page=1`);
+    res.json(commits);
+  } catch (error) {
+    console.error(`❌ Erreur récupération commits ${req.params.owner}/${req.params.repo}:`, error.message);
+    res.status(500).json({
+      error: 'Impossible de récupérer les commits',
+      message: error.message
+    });
+  }
+});
+
 app.get('/senscritique', async (req, res) => {
   try {
     const now = Date.now();
@@ -326,5 +436,7 @@ client.login(TOKEN).catch(err => {
 app.listen(PORT, () => {
   console.log(`\n🚀 Serveur lancé sur http://localhost:${PORT}`);
   console.log(`📡 Endpoint Discord: http://localhost:${PORT}/discord-status`);
+  console.log(`📡 Endpoint GitHub: http://localhost:${PORT}/github`);
+  console.log(`📡 Endpoint SensCritique: http://localhost:${PORT}/senscritique`);
   console.log(`\n💡 Ouvrez index.html dans votre navigateur\n`);
 });

@@ -301,26 +301,32 @@ async function fetchGitHubStats() {
   }
 
   try {
-    const [userResponse, reposResponse] = await Promise.all([
-      fetch(URLS.githubApi),
-      fetch(`${URLS.githubApi}/repos?sort=updated&per_page=10`)
-    ]);
-
-    if (!userResponse.ok || !reposResponse.ok) {
-      throw new Error('API GitHub non disponible');
+    // Utiliser le backend pour éviter les erreurs CORS et 403
+    const response = await fetch(`${CONFIG.backendUrl}/github`);
+    
+    if (!response.ok) {
+      throw new Error(`Backend GitHub non disponible: ${response.status}`);
     }
 
-    const [user, repos] = await Promise.all([userResponse.json(), reposResponse.json()]);
-    const eventsResponse = await fetch(`${URLS.githubApi}/events?per_page=100`);
-    const events = eventsResponse.ok ? await eventsResponse.json() : [];
+    const data = await response.json();
+    
+    if (data.error) {
+      throw new Error(data.message || data.error);
+    }
 
-    state.cache.github = { user, repos, events };
+    state.cache.github = data;
     state.cache.lastGithubFetch = Date.now();
 
     updateUIWithGitHubData(state.cache.github);
   } catch (error) {
     console.error('❌ Erreur GitHub:', error);
-    useFallbackGitHubData();
+    // Utiliser les données de fallback seulement si on n'a pas de cache
+    if (!state.cache.github) {
+      useFallbackGitHubData();
+    } else {
+      // Utiliser le cache existant si disponible
+      updateUIWithGitHubData(state.cache.github);
+    }
   }
 }
 
@@ -484,8 +490,14 @@ async function generateActivityTable(events, repos = []) {
 
 async function fetchLatestCommit(repo, row) {
   try {
-    const commitsResponse = await fetch(`https://api.github.com/repos/${repo.full_name}/commits?per_page=1`);
-    if (!commitsResponse.ok) return;
+    // Utiliser le backend pour éviter les erreurs CORS et 403
+    const [owner, repoName] = repo.full_name.split('/');
+    const commitsResponse = await fetch(`${CONFIG.backendUrl}/github/commits/${owner}/${repoName}`);
+    
+    if (!commitsResponse.ok) {
+      console.warn(`⚠️  Impossible de récupérer les commits pour ${repo.full_name}: ${commitsResponse.status}`);
+      return;
+    }
 
     const commits = await commitsResponse.json();
     if (!Array.isArray(commits) || commits.length === 0) return;

@@ -269,6 +269,7 @@ app.get('/senscritique', async (req, res) => {
     }
     
     console.log('🎬 Récupération du profil Sens Critique...');
+    console.log('🔍 Démarrage du scraping des critiques...');
     const profile = await fetchSensCritiqueProfile('KiMi_');
     
     cachedSensCritique = profile;

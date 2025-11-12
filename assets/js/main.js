@@ -674,6 +674,7 @@ async function fetchSensCritiqueData() {
     sc.reviewsContainer.innerHTML = '<div class="sc-loading">Chargement des critiques...</div>';
   }
   
+  // Vérifier le cache
   if (isCacheValid(state.cache.lastScFetch, CONFIG.cacheDurations.sensCritique) && state.cache.sensCritique) {
     updateUIWithSCData(state.cache.sensCritique);
     return;
@@ -681,34 +682,43 @@ async function fetchSensCritiqueData() {
 
   try {
     const response = await fetch(`${CONFIG.backendUrl}/senscritique`);
-    if (!response.ok) throw new Error('Backend non disponible');
+    
+    if (!response.ok) {
+      throw new Error(`Backend non disponible: ${response.status}`);
+    }
 
     const data = await response.json();
     
-    // Vérifier que les données sont valides
     if (!data) {
       throw new Error('Données vides reçues du backend');
     }
 
-    // Vérifier que les données contiennent des critiques
-    if (!data.reviews || !Array.isArray(data.reviews) || data.reviews.length === 0) {
-      console.warn('⚠️ Aucune critique dans les données SensCritique reçues');
-    }
+    // Log pour debug
+    console.log('📊 Données SensCritique reçues:', {
+      username: data.username,
+      reviewsCount: data.reviews ? data.reviews.length : 0,
+      hasReviews: Array.isArray(data.reviews) && data.reviews.length > 0
+    });
 
+    // Mettre en cache
     state.cache.sensCritique = data;
     state.cache.lastScFetch = Date.now();
 
+    // Gérer les erreurs avec fallback
     if (data.error && data.fallback) {
       useFallbackData(data.fallback);
       return;
     }
 
+    // Mettre à jour l'UI
     updateUIWithSCData(data);
+    
   } catch (error) {
-    console.error('Erreur lors de la récupération Sens Critique:', error);
+    console.error('❌ Erreur lors de la récupération Sens Critique:', error);
     useFallbackData({
       username: CONFIG.scUsername,
-      stats: { films: 66, series: 32, jeux: 19, livres: 17 }
+      stats: { films: 66, series: 32, jeux: 19, livres: 17 },
+      reviews: []
     });
   }
 }
@@ -720,95 +730,109 @@ function updateUIWithSCData(data) {
   }
 
   const { sc } = state.elements;
+  
+  // Mettre à jour les informations de base
   sc.username.textContent = data.username || CONFIG.scUsername;
   
-  // Construire le texte de la bio avec genre, localisation et âge
   let bioText = `${data.gender || 'Homme'} | ${data.location || 'France'}`;
   if (data.age) {
     bioText += ` | ${data.age} ans`;
   }
   sc.bio.textContent = bioText;
+  
+  // Mettre à jour les statistiques
   sc.movies.textContent = data.stats?.films || 0;
   sc.series.textContent = data.stats?.series || 0;
   sc.games.textContent = data.stats?.jeux || 0;
   sc.reviews.textContent = data.stats?.total || ((data.stats?.films || 0) + (data.stats?.series || 0) + (data.stats?.jeux || 0));
 
-  const reviewsContainer = sc.reviewsContainer;
-  
-  // Vérifier que reviews existe et est un tableau
-  const reviews = data.reviews;
-  if (!reviews || !Array.isArray(reviews) || reviews.length === 0) {
-    reviewsContainer.innerHTML = '<div class="sc-review-item">Aucune critique disponible</div>';
-    loadFavoriteMovies(data.favorites || data.collections || []);
-    setupStatLinks();
-    return;
-  }
-  
-  // Vider le conteneur avant d'ajouter les critiques
-  reviewsContainer.innerHTML = '';
-
-  // Afficher TOUTES les critiques, pas seulement 50
-  const reviewsToShow = reviews.filter(r => r && r.title); // Filtrer les critiques valides
-  
-  if (reviewsToShow.length === 0) {
-    reviewsContainer.innerHTML = '<div class="sc-review-item">Aucune critique disponible</div>';
-    loadFavoriteMovies(data.favorites || data.collections || []);
-    setupStatLinks();
-    return;
-  }
-  
-  // Utiliser DocumentFragment pour optimiser le rendu (une seule opération DOM)
-  const fragment = document.createDocumentFragment();
-  
-  reviewsToShow.forEach(review => {
-      const reviewItem = document.createElement('a');
-      reviewItem.className = 'sc-review-item';
-      reviewItem.href = review.url || `${URLS.scProfile}/critiques`;
-      reviewItem.target = '_blank';
-      reviewItem.rel = 'noopener noreferrer';
-
-      // SOLUTION ALTERNATIVE: Toujours parser le texte brut de la date
-      // Priorité: date_raw (texte brut) > created_at (ISO) > date (texte)
-      let dateToFormat = null;
-      
-      // Si on a un texte brut, le parser en date ISO
-      if (review.date_raw) {
-        const parsedFromRaw = parseDateFromText(review.date_raw);
-        if (parsedFromRaw) {
-          dateToFormat = parsedFromRaw;
-        } else {
-          // Si le parsing échoue, utiliser le texte brut directement
-          dateToFormat = review.date_raw;
-        }
-      } else if (review.created_at || review.updated_at) {
-        // Si on a déjà une date ISO, l'utiliser
-        dateToFormat = review.created_at || review.updated_at;
-      } else if (review.date) {
-        // Sinon, essayer de parser le champ date
-        const parsedFromDate = parseDateFromText(review.date);
-        dateToFormat = parsedFromDate || review.date;
-      }
-      
-      const formattedDate = dateToFormat ? formatReviewDate(dateToFormat) : 'non disponible';
-      const ratingStars = review.rating ? ` | ${review.rating}⭐` : '';
-      const reviewContent = review.content || review.comment || 'Pas de commentaire';
-
-      reviewItem.innerHTML = `
-        <div class="sc-review-header">
-          <div class="sc-review-title">${review.title || 'Sans titre'}${ratingStars}</div>
-        </div>
-        <div class="sc-review-comment">${reviewContent}</div>
-        <div class="sc-review-date">${formattedDate}</div>
-      `;
-
-      fragment.appendChild(reviewItem);
-    });
-    
-  // Ajouter tous les éléments en une seule opération DOM
-  reviewsContainer.appendChild(fragment);
-
+  // Charger les favoris et les liens
   loadFavoriteMovies(data.favorites || data.collections || []);
   setupStatLinks();
+  
+  // Afficher les critiques récentes
+  displayRecentReviews(data.reviews || []);
+}
+
+function displayRecentReviews(reviews) {
+  const { sc } = state.elements;
+  
+  if (!sc || !sc.reviewsContainer) {
+    console.error('❌ Conteneur des critiques non trouvé');
+    return;
+  }
+  
+  const container = sc.reviewsContainer;
+  
+  // Vérifier que reviews est un tableau valide
+  if (!Array.isArray(reviews) || reviews.length === 0) {
+    container.innerHTML = '<div class="sc-review-empty">Aucune critique disponible</div>';
+    return;
+  }
+  
+  // Filtrer les critiques valides (doivent avoir un titre)
+  const validReviews = reviews.filter(r => r && r.title && r.title.trim().length > 0);
+  
+  if (validReviews.length === 0) {
+    container.innerHTML = '<div class="sc-review-empty">Aucune critique disponible</div>';
+    return;
+  }
+  
+  // Vider le conteneur
+  container.innerHTML = '';
+  
+  // Créer un fragment pour optimiser les performances
+  const fragment = document.createDocumentFragment();
+  
+  // Créer un élément pour chaque critique
+  validReviews.forEach(review => {
+    const reviewItem = document.createElement('a');
+    reviewItem.className = 'sc-review-item';
+    reviewItem.href = review.url || `${URLS.scProfile}/critiques`;
+    reviewItem.target = '_blank';
+    reviewItem.rel = 'noopener noreferrer';
+    
+    // Extraire et formater la date
+    let dateText = 'non disponible';
+    if (review.created_at) {
+      dateText = formatReviewDate(review.created_at);
+    } else if (review.date_raw) {
+      const parsed = parseDateFromText(review.date_raw);
+      dateText = parsed ? formatReviewDate(parsed) : review.date_raw;
+    } else if (review.date) {
+      const parsed = parseDateFromText(review.date);
+      dateText = parsed ? formatReviewDate(parsed) : review.date;
+    }
+    
+    // Extraire la note
+    const rating = review.rating ? ` | ${review.rating}⭐` : '';
+    
+    // Extraire le contenu
+    const content = review.content || review.comment || 'Pas de commentaire';
+    
+    // Créer le HTML de la critique
+    reviewItem.innerHTML = `
+      <div class="sc-review-header">
+        <div class="sc-review-title">${escapeHtml(review.title)}${rating}</div>
+      </div>
+      <div class="sc-review-comment">${escapeHtml(content)}</div>
+      <div class="sc-review-date">${escapeHtml(dateText)}</div>
+    `;
+    
+    fragment.appendChild(reviewItem);
+  });
+  
+  // Ajouter toutes les critiques en une seule opération
+  container.appendChild(fragment);
+  
+  console.log(`✅ ${validReviews.length} critiques affichées`);
+}
+
+function escapeHtml(text) {
+  if (!text) return '';
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }
 
 function formatReviewDate(dateString) {
@@ -1081,55 +1105,10 @@ function useFallbackData(fallbackData) {
   sc.games.textContent = fallbackData.stats?.jeux || 19;
   sc.reviews.textContent = fallbackData.stats?.total || 117;
 
-  const fallbackReviews = [
-    {
-      title: 'The Rain',
-      content: 'Honnêtement, j\'ai vraiment accroché à cette série. Le concept du virus transmis par la pluie est super original...',
-      // Pas de date par défaut - sera affiché comme "non disponible"
-      url: `${URLS.scProfile}/critiques`,
-      rating: 9
-    },
-    {
-      title: 'Nouvelle École',
-      content: 'Franchement, c\'est juste nul. Tout sonne faux, surjoué, trop de drama pour pas grand-chose...',
-      // Pas de date par défaut - sera affiché comme "non disponible"
-      url: `${URLS.scProfile}/critiques`,
-      rating: 3
-    },
-    {
-      title: 'Astérix & Obélix : Le Combat des chefs',
-      content: 'Franchement, j\'ai passé un bon moment devant ce petit cartoon, sans que ce soit une claque non plus...',
-      // Pas de date par défaut - sera affiché comme "non disponible"
-      url: `${URLS.scProfile}/critiques`,
-      rating: 7
-    }
-  ];
-
-  const reviewsContainer = sc.reviewsContainer;
-  reviewsContainer.innerHTML = '';
-
-  fallbackReviews.forEach(review => {
-    const reviewItem = document.createElement('a');
-    reviewItem.className = 'sc-review-item';
-    reviewItem.href = review.url;
-    reviewItem.target = '_blank';
-    reviewItem.rel = 'noopener noreferrer';
-
-    const formattedDate = formatReviewDate(review.date);
-    const ratingStars = review.rating ? ` | ${review.rating}⭐` : '';
-
-    reviewItem.innerHTML = `
-      <div class="sc-review-header">
-        <div class="sc-review-title">${review.title}${ratingStars}</div>
-      </div>
-      <div class="sc-review-comment">${review.content}</div>
-      <div class="sc-review-date">${formattedDate}</div>
-    `;
-
-    reviewsContainer.appendChild(reviewItem);
-  });
-
-  loadFavoriteMovies([]);
+  // Afficher les critiques de fallback ou vides
+  displayRecentReviews(fallbackData.reviews || []);
+  
+  loadFavoriteMovies(fallbackData.collections || []);
   setupStatLinks();
 }
 

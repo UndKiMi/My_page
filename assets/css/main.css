@@ -930,18 +930,33 @@ header h1::after {
   color: var(--text-dim);
   font-size: 0.7rem;
   margin-top: 6px;
-  text-align: right;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+}
+
+.sc-review-empty {
+  text-align: center;
+  color: var(--text-dim);
+  padding: 40px 20px;
+  font-size: 0.9rem;
 }
 
 .sc-loading {
+  text-align: center;
+  color: var(--text-dim);
+  padding: 40px 20px;
+  font-size: 0.9rem;
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 200px;
-  color: var(--text-dim);
+  min-height: 200px;
+}
+
+.sc-reviews-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
 }
 
 .sc-error {

@@ -7,21 +7,42 @@ const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
 
+const compression = require('compression');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
-const STATIC_MAX_AGE = process.env.STATIC_MAX_AGE || '1h';
+const STATIC_MAX_AGE = process.env.STATIC_MAX_AGE || '24h'; // Augmenté à 24h pour meilleur cache
 const CUSTOM_BADGES_PATH = path.join(__dirname, 'user-badges.json');
-const PRESENCE_REFRESH_INTERVAL = Number(process.env.PRESENCE_REFRESH_INTERVAL) || 2000;
+const PRESENCE_REFRESH_INTERVAL = Number(process.env.PRESENCE_REFRESH_INTERVAL) || 10000; // 10s au lieu de 2s
 
 let customBadges = [];
 
 app.disable('x-powered-by');
+
+// Compression gzip pour réduire la taille des réponses
+app.use(compression());
+
+// CORS
 app.use(cors());
-app.use(express.static('.', { maxAge: STATIC_MAX_AGE }));
+
+// Cache HTTP amélioré pour les fichiers statiques
+app.use(express.static('.', { 
+  maxAge: STATIC_MAX_AGE,
+  etag: true,
+  lastModified: true,
+  setHeaders: (res, path) => {
+    // Cache plus long pour les assets
+    if (path.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$/)) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable'); // 1 an pour les assets
+    } else if (path.match(/\.(html)$/)) {
+      res.setHeader('Cache-Control', 'public, max-age=3600'); // 1h pour HTML
+    }
+  }
+}));
 
 let cachedSensCritique = null;
 let lastSCFetch = 0;
-const SC_CACHE_DURATION = 600000; // 10 minutes - bon équilibre entre performance et fraîcheur des données
+const SC_CACHE_DURATION = 3600000; // 1 heure - optimisé pour performance
 
 let cachedGitHub = null;
 let lastGitHubFetch = 0;

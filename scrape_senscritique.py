@@ -127,28 +127,98 @@ def parse_french_date(date_text: str) -> Optional[str]:
     return None
 
 
-def extract_date(date_text: str) -> tuple[Optional[str], str]:
+def extract_date(element) -> Dict[str, Optional[str]]:
     """
-    Extrait et convertit une date en ISO.
-    Retourne (date_iso, date_raw)
+    Extrait TOUTES les formes de dates avec PRIORITÉ à l'ISO
+    
+    Priorité 1: Attribut datetime="2025-11-12T..." (le plus fiable)
+    Priorité 2: Date française "le 4 nov. 2025"
+    Priorité 3: Date relative "il y a X jours"
+    
+    Args:
+        element: BeautifulSoup element ou string
+    
+    Returns:
+        dict: {'date_iso': '2025-11-12T...', 'date_text': 'il y a 5 jours'}
     """
-    if not date_text:
-        return None, None
+    date_iso = None
+    date_text = None
     
-    date_raw = date_text.strip()
+    # Si c'est un élément BeautifulSoup
+    if hasattr(element, 'find'):
+        # PRIORITÉ 1 : Chercher les balises <time datetime="...">
+        time_tag = element.find('time', datetime=True)
+        if time_tag and time_tag.get('datetime'):
+            date_iso = time_tag['datetime']
+            # Nettoyer l'ISO (enlever timezone si présent)
+            if 'T' in date_iso:
+                date_iso = date_iso.split('.')[0].split('+')[0].split('Z')[0]  # Enlever millisecondes et timezone
+            date_text = time_tag.get_text(strip=True) or None
+        
+        # Si pas d'ISO, chercher dans le texte de l'élément
+        if not date_iso:
+            all_text = element.get_text()
+            
+            # PRIORITÉ 2 : Chercher date française "le 4 nov. 2025"
+            french_date_match = re.search(
+                r'(?:le\s+)?(\d{1,2})\s+(janv?\.?|févr?\.?|mars|avr\.?|mai|juin|juil?\.?|août|sept?\.?|oct\.?|nov\.?|déc\.?)\s+(\d{4})',
+                all_text,
+                re.IGNORECASE
+            )
+            if french_date_match:
+                day = int(french_date_match.group(1))
+                month_str = french_date_match.group(2).lower().rstrip('.')
+                year = int(french_date_match.group(3))
+                month = MONTHS_FR.get(month_str, 1)
+                try:
+                    date_iso = datetime(year, month, day).isoformat()
+                    date_text = french_date_match.group(0)
+                except ValueError:
+                    pass
+            
+            # PRIORITÉ 3 : Chercher date relative "il y a X jours/semaines/mois/ans"
+            if not date_text:
+                # Pattern amélioré pour capturer "jour" ET "jours"
+                relative_match = re.search(
+                    r'il\s+y\s+a\s+(\d+)\s+(jour|jours|semaine|semaines|mois|an|ans)',
+                    all_text,
+                    re.IGNORECASE
+                )
+                if relative_match:
+                    number = int(relative_match.group(1))
+                    unit = relative_match.group(2).lower()
+                    
+                    # Normaliser : toujours mettre au pluriel si > 1
+                    if number > 1 and not unit.endswith('s'):
+                        unit += 's'
+                    
+                    date_text = f"il y a {number} {unit}"
+                    
+                    # Calculer l'ISO depuis la date relative
+                    now = datetime.now()
+                    if 'jour' in unit:
+                        date_iso = (now - timedelta(days=number)).isoformat()
+                    elif 'semaine' in unit:
+                        date_iso = (now - timedelta(weeks=number)).isoformat()
+                    elif 'mois' in unit:
+                        # Approximation : 1 mois = 30 jours
+                        date_iso = (now - timedelta(days=number * 30)).isoformat()
+                    elif 'an' in unit:
+                        date_iso = (now - timedelta(days=number * 365)).isoformat()
+    else:
+        # Si c'est une string, utiliser l'ancienne méthode
+        date_text = str(element).strip() if element else None
+        if date_text:
+            # Essayer d'abord la date relative
+            date_iso = parse_relative_date(date_text)
+            if not date_iso:
+                # Essayer ensuite la date française
+                date_iso = parse_french_date(date_text)
     
-    # Essayer d'abord la date relative
-    date_iso = parse_relative_date(date_raw)
-    if date_iso:
-        return date_iso, date_raw
-    
-    # Essayer ensuite la date française
-    date_iso = parse_french_date(date_raw)
-    if date_iso:
-        return date_iso, date_raw
-    
-    # Si aucune conversion n'a fonctionné, retourner None
-    return None, date_raw
+    return {
+        'date_iso': date_iso,
+        'date_text': date_text
+    }
 
 
 def extract_review_id(url: str) -> Optional[str]:
@@ -165,14 +235,17 @@ def extract_review_id(url: str) -> Optional[str]:
     return None
 
 
-def scrape_reviews(max_pages: int = 10) -> Dict:
+def scrape_reviews(max_pages: int = 100, delay: float = 0.5) -> Dict:
     """
     Scrape les critiques depuis SensCritique
     """
     all_reviews = []
     page = 1
     
-    print(f"🔍 Début du scraping pour {USERNAME}...")
+    print(f"🔍 Scraping des critiques de {USERNAME}...")
+    print(f"📄 Pages max: {max_pages} | Délai: {delay}s")
+    
+    session = requests.Session()
     
     while page <= max_pages:
         # Construire l'URL avec pagination
@@ -181,153 +254,101 @@ def scrape_reviews(max_pages: int = 10) -> Dict:
         else:
             url = f"{BASE_URL}?page={page}"
         
-        print(f"📄 Page {page}/{max_pages}: {url}")
+        print(f"📄 Page {page}/{max_pages}...", end=' ')
         
         try:
-            response = requests.get(url, headers=HEADERS, timeout=30)
+            response = session.get(url, headers=HEADERS, timeout=15)
             response.raise_for_status()
             
             soup = BeautifulSoup(response.text, 'html.parser')
             
-            # Chercher les articles de critiques
-            # Plusieurs sélecteurs possibles selon la structure HTML
-            review_articles = soup.find_all('article', {'data-testid': 'review-overview'})
+            # Multi-sélecteurs CSS (ordre de priorité)
+            review_articles = (
+                soup.select('article[data-testid="review-overview"]') or
+                soup.select('[data-testid*="review"]') or
+                soup.select('article.elme-review') or
+                soup.select('article')
+            )
             
             if not review_articles:
-                # Essayer d'autres sélecteurs
-                review_articles = soup.find_all('article')
-                # Filtrer pour ne garder que ceux qui contiennent des critiques
-                review_articles = [a for a in review_articles if a.find('a', href=re.compile(r'/critique/'))]
-            
-            if not review_articles:
-                print(f"⚠️  Aucune critique trouvée sur la page {page}")
+                print(f"✅ Fin (aucune critique sur cette page)")
                 break
             
-            print(f"✅ {len(review_articles)} critiques trouvées sur la page {page}")
-            
-            page_reviews = []
-            
-            for article in review_articles:
-                try:
-                    review = {}
-                    
-                    # Extraire le titre
-                    title_link = article.find('a', {'data-testid': 'productReviewTitle'})
-                    if not title_link:
-                        title_link = article.find('h2', {'data-testid': 'reviewTitle'})
-                        if title_link:
-                            title_link = title_link.find('a')
-                    
-                    if not title_link:
-                        # Chercher dans tout l'article
-                        title_link = article.find('a', href=re.compile(r'/(film|serie|jeu|livre)/'))
-                    
-                    if title_link:
-                        title = title_link.get_text(strip=True)
-                        # Nettoyer le titre (enlever "Critique de" et "par KiMi_")
-                        title = re.sub(r'^Critique de\s+', '', title, flags=re.IGNORECASE)
-                        title = re.sub(r'\s+par\s+KiMi_', '', title, flags=re.IGNORECASE)
-                        review['title'] = title.strip()
-                        
-                        # Extraire l'URL
-                        href = title_link.get('href', '')
-                        if href:
-                            if href.startswith('/'):
-                                review['url'] = f"https://www.senscritique.com{href}"
-                            else:
-                                review['url'] = href
-                            
-                            # Extraire l'ID
-                            review['id'] = extract_review_id(review['url'])
-                    else:
-                        continue  # Pas de titre, on skip cette critique
-                    
-                    # Extraire la note
-                    rating_elem = article.find('div', {'data-testid': 'Rating'})
-                    if not rating_elem:
-                        rating_elem = article.find(string=re.compile(r'^\d+$'))
-                    
-                    if rating_elem:
-                        if hasattr(rating_elem, 'get_text'):
-                            rating_text = rating_elem.get_text(strip=True)
-                        else:
-                            rating_text = str(rating_elem).strip()
-                        
-                        rating_match = re.search(r'(\d+)', rating_text)
-                        if rating_match:
-                            review['rating'] = rating_match.group(1)
-                    
-                    # Extraire le contenu
-                    content_elem = article.find('p', {'data-testid': 'linkify'})
-                    if not content_elem:
-                        content_elem = article.find('p')
-                    
-                    if content_elem:
-                        content = content_elem.get_text(strip=True)
-                        # Limiter à 200 caractères
-                        if len(content) > 200:
-                            content = content[:200] + '...'
-                        review['content'] = content
-                    else:
-                        review['content'] = 'Pas de commentaire'
-                    
-                    # Extraire la date
-                    date_elem = article.find('time')
-                    date_text = None
-                    
-                    if date_elem:
-                        # Essayer l'attribut datetime
-                        date_text = date_elem.get('datetime')
-                        if not date_text:
-                            date_text = date_elem.get_text(strip=True)
-                    else:
-                        # Chercher dans le texte de l'article
-                        date_patterns = [
-                            r'il\s+y\s+a\s+\d+\s+(?:jour|jours|semaine|semaines|mois|an|ans)',
-                            r'le\s+\d{1,2}\s+\w+\.?\s+\d{4}',
-                            r'hier',
-                            r"aujourd'hui"
-                        ]
-                        
-                        article_text = article.get_text()
-                        for pattern in date_patterns:
-                            match = re.search(pattern, article_text, re.IGNORECASE)
-                            if match:
-                                date_text = match.group(0)
-                                break
-                    
-                    if date_text:
-                        date_iso, date_raw = extract_date(date_text)
-                        review['date'] = date_iso
-                        review['date_raw'] = date_raw
-                    else:
-                        review['date'] = None
-                        review['date_raw'] = None
-                    
-                    # Extraire l'image
-                    img_elem = article.find('img')
-                    if img_elem:
-                        img_src = img_elem.get('src', '')
-                        if img_src and 'senscritique.com' in img_src:
-                            review['image'] = img_src
-                    
-                    # Ajouter la critique seulement si elle a un titre
-                    if review.get('title'):
-                        page_reviews.append(review)
+            page_reviews = 0
+            for element in review_articles:
+                # Extraire le titre avec multi-sélecteurs
+                title_el = (
+                    element.select_one('a[data-testid="productReviewTitle"]') or
+                    element.select_one('h2[data-testid="reviewTitle"]') or
+                    element.select_one('h2') or
+                    element.select_one('h3')
+                )
                 
-                except Exception as e:
-                    print(f"⚠️  Erreur lors de l'extraction d'une critique: {e}")
+                if not title_el:
                     continue
+                
+                title = title_el.get_text(strip=True)
+                # Nettoyer le titre
+                title = re.sub(r'^Critique de\s+', '', title, flags=re.IGNORECASE)
+                title = re.sub(r'\s+par\s+\w+$', '', title, flags=re.IGNORECASE)
+                
+                # Extraire le contenu
+                content_el = (
+                    element.select_one('p[data-testid="linkify"]') or
+                    element.select_one('p.elme-review-text') or
+                    element.select_one('p')
+                )
+                content = content_el.get_text(strip=True) if content_el else "Pas de commentaire"
+                
+                # Extraire les dates avec la fonction optimisée
+                dates = extract_date(element)
+                
+                # Extraire la note
+                rating = None
+                rating_el = (
+                    element.select_one('[data-testid="Rating"]') or
+                    element.select_one('[class*="rating"]')
+                )
+                if rating_el:
+                    rating_match = re.search(r'(\d+)', rating_el.get_text())
+                    if rating_match:
+                        rating = int(rating_match.group(1))
+                
+                # Extraire le lien
+                link_el = (
+                    element.select_one('a[href*="/film/"]') or
+                    element.select_one('a[href*="/serie/"]') or
+                    element.select_one('a[href*="/jeu/"]')
+                )
+                url = f"https://www.senscritique.com{link_el['href']}" if link_el and link_el.get('href') else None
+                
+                # Ajouter la critique si valide
+                if title and len(title) > 2:
+                    review = {
+                        'title': title,
+                        'content': content[:200] + ('...' if len(content) > 200 else ''),
+                        'date': dates['date_text'],
+                        'date_raw': dates['date_text'],
+                        'created_at': dates['date_iso'],
+                        'updated_at': dates['date_iso'],
+                        'rating': rating,
+                        'url': url
+                    }
+                    
+                    # Éviter les doublons
+                    if not any(r['title'] == title for r in all_reviews):
+                        all_reviews.append(review)
+                        page_reviews += 1
+                    
             
-            if not page_reviews:
-                print(f"⚠️  Aucune critique valide extraite de la page {page}")
+            print(f"✅ {page_reviews} critiques")
+            
+            if page_reviews == 0:
+                print("✅ Fin du scraping (page vide)")
                 break
             
-            all_reviews.extend(page_reviews)
-            print(f"✅ {len(page_reviews)} critiques extraites de la page {page}")
-            
-            # Attendre un peu avant la prochaine requête
-            time.sleep(1)
+            # Attendre un peu avant la prochaine requête (rate limiting)
+            time.sleep(delay)
             page += 1
         
         except requests.RequestException as e:
@@ -337,24 +358,19 @@ def scrape_reviews(max_pages: int = 10) -> Dict:
             print(f"❌ Erreur inattendue page {page}: {e}")
             break
     
-    # Trier par date (plus récent en premier)
-    def sort_key(review):
-        date_str = review.get('date')
-        if date_str:
-            try:
-                return datetime.strptime(date_str, '%Y-%m-%d')
-            except:
-                return datetime.min
-        return datetime.min
-    
-    all_reviews.sort(key=sort_key, reverse=True)
+    # Trier par date ISO (plus récentes en premier)
+    all_reviews.sort(
+        key=lambda r: r.get('created_at') or r.get('date') or '1970-01-01',
+        reverse=True
+    )
     
     # Construire le résultat final
     result = {
         "username": USERNAME,
-        "updated_at": datetime.now().strftime('%Y-%m-%dT%H:%M:%S'),
+        "updated_at": datetime.now().isoformat(),
         "total_reviews": len(all_reviews),
-        "reviews": all_reviews
+        "reviews": all_reviews,
+        "scraped_at": datetime.now().isoformat()
     }
     
     print(f"\n✅ Scraping terminé: {len(all_reviews)} critiques récupérées")
@@ -372,8 +388,8 @@ def save_to_json(data: Dict, filename: str = 'senscritique_reviews.json'):
 
 
 if __name__ == '__main__':
-    # Scraper les critiques (max 10 pages)
-    reviews_data = scrape_reviews(max_pages=10)
+    # Scraper jusqu'à 50 pages (augmentable selon besoin)
+    reviews_data = scrape_reviews(max_pages=50, delay=0.5)
     
     # Sauvegarder dans un fichier JSON
     save_to_json(reviews_data)

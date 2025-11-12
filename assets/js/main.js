@@ -2,11 +2,11 @@ const CONFIG = {
   backendUrl: 'https://mypage-production-4e09.up.railway.app',
   scUsername: 'KiMi_',
   githubUsername: 'UndKiMi',
-  discordPollInterval: 2000,
+  discordPollInterval: 10000, // 10s au lieu de 2s pour réduire la charge
   cacheDurations: {
     github: 10 * 60 * 1000,
     discord: 200,
-    sensCritique: 15 * 60 * 1000 // 15 minutes au lieu de 30 pour un meilleur équilibre
+    sensCritique: 60 * 60 * 1000 // 1 heure - optimisé pour performance
   }
 };
 

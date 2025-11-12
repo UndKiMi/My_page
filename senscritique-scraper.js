@@ -101,7 +101,7 @@ function parseReviewsFromHTML(html) {
       }
       
       // Utiliser la fonction dédiée pour extraire la date
-      const extendedContext = html.substring(Math.max(0, titleMatch.index - 1000), titleMatch.index + 4000);
+        const extendedContext = html.substring(Math.max(0, titleMatch.index - 1000), titleMatch.index + 4000);
       const { dateText, dateISO } = extractDateFromHTML(html, context || extendedContext);
       
       if (title && content && content.length > 20) {
@@ -347,7 +347,7 @@ function parseReviewsFromHTML(html) {
         const title = match[1]?.trim();
         const content = match[2]?.trim();
         
-          if (title && content && content.length > 20 && !title.includes('Sens Critique')) {
+        if (title && content && content.length > 20 && !title.includes('Sens Critique')) {
           // Utiliser la fonction dédiée pour extraire la date
           const context = html.substring(Math.max(0, match.index - 200), match.index + match[0].length + 200);
           const { dateText, dateISO } = extractDateFromHTML(html, context);
@@ -654,53 +654,50 @@ async function fetchSensCritiqueReviews(username) {
     
     let browser = null;
     try {
-      // Utiliser Puppeteer pour exécuter le JavaScript (optimisé pour la performance)
+      console.log('🚀 [Scraper] Lancement de Puppeteer...');
+      // Utiliser Puppeteer avec args minimaux (les autres causaient des ECONNRESET)
       browser = await puppeteer.launch({
         headless: true,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--disable-gpu',
-          '--no-first-run',
-          '--no-zygote',
-          '--single-process'
+          '--disable-dev-shm-usage'
         ]
       });
       
       const page = await browser.newPage();
       await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
       
-      await page.goto(url, { waitUntil: 'networkidle0', timeout: 30000 });
+      console.log('📄 [Scraper] Navigation vers:', url);
+      // Optimisé : domcontentloaded au lieu de networkidle0, timeout réduit à 15s
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
       
-      // Attendre que les critiques soient chargées avec plusieurs sélecteurs
+      // Attendre que les critiques soient chargées (timeout réduit à 5s)
       try {
-        await page.waitForSelector('article[data-testid="review-overview"], [data-testid*="review"], article', { timeout: 10000 });
-        console.log('✅ Sélecteur trouvé, page chargée');
+        await page.waitForSelector('article[data-testid="review-overview"], [data-testid*="review"], article', { timeout: 5000 });
+        console.log('✅ [Scraper] Sélecteur trouvé, page chargée');
       } catch (e) {
-        console.log('⚠️  Timeout sur le sélecteur, mais on continue...');
+        console.log('⚠️  [Scraper] Timeout sur le sélecteur, on continue...');
       }
       
-      // Attendre un peu pour le chargement initial (augmenté pour laisser le temps au JS de s'exécuter)
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      // Attente initiale réduite à 1s au lieu de 3s
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
       // Vérifier ce qui est présent dans le DOM
       const initialCheck = await page.evaluate(() => {
         return {
           articles: document.querySelectorAll('article').length,
           reviewElements: document.querySelectorAll('[data-testid*="review"]').length,
-          links: document.querySelectorAll('a[href*="/film/"], a[href*="/serie/"], a[href*="/jeu"]').length,
-          bodyText: document.body.innerText.substring(0, 200)
+          links: document.querySelectorAll('a[href*="/film/"], a[href*="/serie/"], a[href*="/jeu"]').length
         };
       });
-      console.log('📊 État initial du DOM:', initialCheck);
+      console.log('📊 [Scraper] État initial du DOM:', initialCheck);
       
       // Faire défiler la page pour charger toutes les critiques (pagination infinie)
       let previousHeight = 0;
       let currentHeight = await page.evaluate(() => document.body.scrollHeight);
       let scrollAttempts = 0;
-      const maxScrollAttempts = 30; // Réduit pour optimiser le temps de chargement
+      const maxScrollAttempts = 5; // Réduit à 5 au lieu de 30 pour Railway
       let previousReviewCount = 0;
       let stableCount = 0; // Compteur pour vérifier que le nombre est stable
       
@@ -715,7 +712,7 @@ async function fetchSensCritiqueReviews(username) {
       });
       console.log(`📊 Critiques initiales: ${previousReviewCount}`);
       
-      // Essayer de cliquer sur le bouton "Charger plus" s'il existe
+      // Essayer de cliquer sur le bouton "Charger plus" s'il existe (réduit à 500ms)
       try {
         const buttonFound = await page.evaluate(() => {
           const buttons = Array.from(document.querySelectorAll('button, [role="button"], a[class*="button"]'));
@@ -733,8 +730,8 @@ async function fetchSensCritiqueReviews(username) {
         });
         
         if (buttonFound) {
-          console.log('🔘 Bouton "Charger plus" trouvé et cliqué');
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          console.log('🔘 [Scraper] Bouton "Charger plus" trouvé et cliqué');
+          await new Promise(resolve => setTimeout(resolve, 500));
         }
       } catch (e) {
         // Pas de bouton, on continue avec le scroll
@@ -743,12 +740,12 @@ async function fetchSensCritiqueReviews(username) {
       while (scrollAttempts < maxScrollAttempts) {
         previousHeight = currentHeight;
         
-        // Scroller progressivement (optimisé - moins d'attentes)
-        for (let i = 0; i < 5; i++) {
+        // Scroller progressivement (optimisé - attente réduite à 50ms)
+        for (let i = 0; i < 3; i++) {
           await page.evaluate(() => {
-            window.scrollBy(0, 600);
+            window.scrollBy(0, 800);
           });
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise(resolve => setTimeout(resolve, 50));
         }
         
         // Scroller jusqu'en bas
@@ -756,10 +753,10 @@ async function fetchSensCritiqueReviews(username) {
           window.scrollTo(0, document.body.scrollHeight);
         });
         
-        // Attendre que le contenu se charge (timeout réduit)
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        // Attendre que le contenu se charge (timeout réduit à 500ms au lieu de 1500ms)
+        await new Promise(resolve => setTimeout(resolve, 500));
         
-        // Essayer de cliquer sur le bouton "Charger plus" à nouveau
+        // Essayer de cliquer sur le bouton "Charger plus" à nouveau (attente réduite)
         try {
           const buttonClicked = await page.evaluate(() => {
             const buttons = Array.from(document.querySelectorAll('button, [role="button"], a[class*="button"]'));
@@ -781,7 +778,7 @@ async function fetchSensCritiqueReviews(username) {
           });
           
           if (buttonClicked) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            await new Promise(resolve => setTimeout(resolve, 500));
           }
         } catch (e) {
           // Ignorer les erreurs
@@ -804,14 +801,14 @@ async function fetchSensCritiqueReviews(username) {
         if (currentReviewCount > previousReviewCount) {
           stableCount = 0;
           previousReviewCount = currentReviewCount;
-          console.log(`📊 Critiques après scroll ${scrollAttempts}: ${currentReviewCount}`);
+          console.log(`📊 [Scraper] Scroll ${scrollAttempts}/${maxScrollAttempts}: ${currentReviewCount} critiques`);
         } else {
           stableCount++;
         }
         
         // Si la hauteur n'a pas changé ET le nombre de critiques est stable depuis 2 tentatives, on a tout chargé
         if (previousHeight === currentHeight && stableCount >= 2) {
-          console.log(`📜 Scroll terminé: ${currentReviewCount} critiques chargées après ${scrollAttempts} tentatives`);
+          console.log(`✅ [Scraper] Scroll terminé: ${currentReviewCount} critiques après ${scrollAttempts} tentatives`);
           break;
         }
       }
@@ -820,14 +817,12 @@ async function fetchSensCritiqueReviews(username) {
         const finalCount = await page.evaluate(() => {
           return document.querySelectorAll('article[data-testid="review-overview"]').length;
         });
-        console.log(`📜 Scroll arrêté à ${scrollAttempts} tentatives: ${finalCount} critiques chargées`);
+        console.log(`⏹️  [Scraper] Scroll max atteint (${scrollAttempts}): ${finalCount} critiques`);
       }
       
-      // Remonter en haut après le scroll (pas besoin d'attendre)
+      // Remonter en haut après le scroll (attente réduite à 300ms)
       await page.evaluate(() => window.scrollTo(0, 0));
-      
-      // Attendre un peu pour que tout soit stable
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 300));
       
       // Vérifier combien d'articles sont présents dans le DOM
       const articleCount = await page.evaluate(() => {
@@ -838,25 +833,26 @@ async function fetchSensCritiqueReviews(username) {
           allLinks: document.querySelectorAll('a[href*="/film/"], a[href*="/serie/"], a[href*="/jeu"]').length
         };
       });
-      console.log(`📊 Éléments trouvés dans le DOM:`, articleCount);
+      console.log(`📊 [Scraper] Éléments trouvés:`, articleCount);
       
       // Récupérer le HTML rendu
       const data = await page.content();
-      console.log(`📄 Taille du HTML récupéré: ${data.length} caractères`);
+      console.log(`📄 [Scraper] HTML récupéré: ${(data.length / 1024).toFixed(2)} KB`);
       
       await browser.close();
+      console.log('✅ [Scraper] Puppeteer fermé');
       
       // Parser le HTML avec JSDOM
-      const dom = new JSDOM(data);
-      const document = dom.window.document;
-      const reviews = [];
-      
+          const dom = new JSDOM(data);
+          const document = dom.window.document;
+          const reviews = [];
+          
       // Essayer plusieurs sélecteurs CSS pour trouver les critiques (par ordre de spécificité)
       // Commencer par le sélecteur le plus spécifique
       let reviewElements = document.querySelectorAll('article[data-testid="review-overview"]');
-      
-      // Si aucun élément trouvé, essayer d'autres sélecteurs
-      if (reviewElements.length === 0) {
+          
+          // Si aucun élément trouvé, essayer d'autres sélecteurs
+          if (reviewElements.length === 0) {
         reviewElements = document.querySelectorAll('[data-testid*="review"]');
       }
       
@@ -869,10 +865,10 @@ async function fetchSensCritiqueReviews(username) {
         if (reviewLinks.length > 0) {
           reviewElements = reviewLinks;
         }
-      }
-      
-      // Traiter les éléments trouvés avec les sélecteurs CSS
-      reviewElements.forEach((element) => {
+          }
+          
+          // Traiter les éléments trouvés avec les sélecteurs CSS
+          reviewElements.forEach((element) => {
         // Sélecteurs améliorés pour le nouveau HTML de SensCritique
         // Essayer plusieurs sélecteurs pour le titre
         const titleEl = element.querySelector('a[data-testid="productReviewTitle"]') ||
@@ -937,21 +933,21 @@ async function fetchSensCritiqueReviews(username) {
         const { dateText, dateISO } = extractDateFromElement(element);
         
         // Parser la date
-        let finalDate = null;
+              let finalDate = null;
         
         // Priorité 1: Si on a une date ISO, l'utiliser directement
-        if (dateISO) {
-          const cleanedDate = dateISO.trim();
-          if (cleanedDate && /^\d{4}-\d{2}-\d{2}/.test(cleanedDate)) {
-            finalDate = cleanedDate;
-          }
-        }
-        
+              if (dateISO) {
+                const cleanedDate = dateISO.trim();
+                if (cleanedDate && /^\d{4}-\d{2}-\d{2}/.test(cleanedDate)) {
+                  finalDate = cleanedDate;
+                }
+              }
+              
         // Priorité 2: Si pas de date ISO, parser la date relative
-        if (!finalDate && dateText) {
-          finalDate = parseRelativeDate(dateText);
-        }
-        
+              if (!finalDate && dateText) {
+                finalDate = parseRelativeDate(dateText);
+              }
+              
         // Extraire l'URL
         let url = '';
         if (linkEl) {
@@ -962,15 +958,15 @@ async function fetchSensCritiqueReviews(username) {
         }
         
         // Extraire la note
-        let rating = null;
-        if (ratingEl) {
-          const ratingText = ratingEl.textContent || ratingEl.getAttribute('aria-label') || '';
-          const ratingMatch = ratingText.match(/(\d+)/);
-          if (ratingMatch) {
-            rating = parseInt(ratingMatch[1]);
-          }
-        }
-        
+              let rating = null;
+              if (ratingEl) {
+                const ratingText = ratingEl.textContent || ratingEl.getAttribute('aria-label') || '';
+                const ratingMatch = ratingText.match(/(\d+)/);
+                if (ratingMatch) {
+                  rating = parseInt(ratingMatch[1]);
+                }
+              }
+              
         // Accepter les critiques même avec peu de contenu (minimum 10 caractères au lieu de 20)
         if (title && title.length > 2) {
           // Normaliser "jour" en "jours" si nécessaire pour le formatage
@@ -982,35 +978,35 @@ async function fetchSensCritiqueReviews(username) {
             }
           }
           
-          reviews.push({
-            title,
+                reviews.push({
+                  title,
             content: content.length > 10 ? (content.substring(0, 200) + (content.length > 200 ? '...' : '')) : 'Pas de commentaire',
             date: normalizedDateText || null,
             date_raw: normalizedDateText || null,
-            created_at: finalDate || null,
-            updated_at: finalDate || null,
+                  created_at: finalDate || null,
+                  updated_at: finalDate || null,
             url: url || `https://www.senscritique.com/${username}/critiques`,
-            rating
-          });
+                  rating
+                });
         }
       });
       
       console.log(`📝 Critiques trouvées avec CSS: ${reviews.length}`);
       
       // Toujours essayer le parsing HTML brut pour compléter (même si on a trouvé des critiques avec CSS)
-      const htmlReviews = parseReviewsFromHTML(data);
+            const htmlReviews = parseReviewsFromHTML(data);
       console.log(`📝 Critiques trouvées avec HTML brut: ${htmlReviews.length}`);
       
       // Ajouter les critiques du HTML brut qui ne sont pas déjà présentes
-      for (const htmlReview of htmlReviews) {
+            for (const htmlReview of htmlReviews) {
         const isDuplicate = reviews.some(r => 
           r.title === htmlReview.title && 
           r.content.substring(0, 50) === htmlReview.content.substring(0, 50)
         );
-        if (!isDuplicate) {
-          reviews.push(htmlReview);
-        }
-      }
+              if (!isDuplicate) {
+                reviews.push(htmlReview);
+              }
+            }
       
       // Si toujours aucune critique, chercher TOUS les articles
       if (reviews.length === 0) {
@@ -1102,14 +1098,15 @@ async function fetchSensCritiqueReviews(username) {
         reviews = [];
       }
       
-      console.log(`✅ ${reviews.length} critiques trouvées`);
+      console.log(`✅ [Scraper] ${reviews.length} critique(s) extraite(s)`);
       if (reviews.length > 0) {
-        console.log(`📊 Exemples de dates: ${reviews.slice(0, 3).map(r => r.date_raw || r.date || 'N/A').join(', ')}`);
+        console.log(`📊 [Scraper] Exemples de dates: ${reviews.slice(0, 3).map(r => r.date_raw || r.date || 'N/A').join(', ')}`);
+        console.log(`📊 [Scraper] Sélecteur utilisé pour les critiques`);
       }
       resolve(reviews);
     } catch (error) {
-      console.error('❌ Erreur Puppeteer:', error.message);
-      console.error('❌ Stack:', error.stack);
+      console.error('❌ [Scraper] Erreur Puppeteer:', error.message);
+      console.error('📍 [Scraper] Stack:', error.stack);
       
       // Essayer de récupérer le HTML même en cas d'erreur partielle
       if (browser) {
@@ -1333,7 +1330,7 @@ async function fetchBasicProfile(username) {
               }
             }
           }
-
+          
           const profile = {
             username: profileUsername,
             location: location,

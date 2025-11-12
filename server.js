@@ -390,121 +390,69 @@ app.get('/github/commits/:owner/:repo', async (req, res) => {
   }
 });
 
+// Endpoint pour vider le cache (debug)
+app.get('/senscritique/clear-cache', (req, res) => {
+  cachedSensCritique = null;
+  lastSCFetch = 0;
+  console.log('🗑️  [SensCritique] Cache vidé');
+  res.json({ success: true, message: 'Cache SensCritique vidé' });
+});
+
 app.get('/senscritique', async (req, res) => {
   try {
     const now = Date.now();
     
-    if (cachedSensCritique && (now - lastSCFetch) < SC_CACHE_DURATION) {
-      console.log('📦 Utilisation du cache Sens Critique');
-      // S'assurer que le cache contient bien des critiques
+    // Vérifier le cache d'abord (1 heure), sauf si force=true
+    const forceRefresh = req.query.force === 'true';
+    
+    if (!forceRefresh && cachedSensCritique && (now - lastSCFetch) < SC_CACHE_DURATION) {
+      console.log('📦 [SensCritique] Cache utilisé - pas de scraping');
       if (cachedSensCritique.reviews && Array.isArray(cachedSensCritique.reviews) && cachedSensCritique.reviews.length > 0) {
         return res.json(cachedSensCritique);
       } else {
-        console.log('⚠️  Cache invalide (pas de critiques), rechargement...');
+        console.log('⚠️  [SensCritique] Cache invalide, rechargement...');
       }
     }
     
-    console.log('🎬 Récupération des critiques depuis l\'API Python...');
-    
-    // Appeler l'API Python
-    const pythonApiUrl = process.env.PYTHON_API_URL || 'http://localhost:5000/api/critiques';
-    
-    try {
-      const https = require('https');
-      const http = require('http');
-      const url = require('url');
-      
-      const apiUrl = new URL(pythonApiUrl);
-      const client = apiUrl.protocol === 'https:' ? https : http;
-      
-      const pythonResponse = await new Promise((resolve, reject) => {
-        const request = client.get(apiUrl, (response) => {
-          let data = '';
-          response.on('data', (chunk) => {
-            data += chunk;
-          });
-          response.on('end', () => {
-            if (response.statusCode === 200) {
-              try {
-                resolve(JSON.parse(data));
-              } catch (e) {
-                reject(new Error('Erreur parsing JSON: ' + e.message));
-              }
-            } else {
-              reject(new Error(`HTTP ${response.statusCode}: ${data}`));
-            }
-          });
-        });
-        
-        request.on('error', (error) => {
-          reject(error);
-        });
-        
-        request.setTimeout(30000, () => {
-          request.destroy();
-          reject(new Error('Timeout'));
-        });
-      });
-      
-      // Convertir le format Python vers le format attendu par le frontend
-      const profile = {
-        username: pythonResponse.username || 'KiMi_',
-        location: 'France',
-        gender: 'Homme',
-        stats: {
-          films: 0,
-          series: 0,
-          jeux: 0,
-          livres: 0,
-          total: pythonResponse.total_reviews || 0
-        },
-        collections: [],
-        reviews: (pythonResponse.reviews || []).map(review => ({
-          title: review.title,
-          content: review.content || 'Pas de commentaire',
-          date: review.date_raw || null,
-          date_raw: review.date_raw || null,
-          created_at: review.date || null,
-          updated_at: review.date || null,
-          url: review.url || null,
-          rating: review.rating ? parseInt(review.rating) : null,
-          image: review.image || null
-        })),
-        profileUrl: `https://www.senscritique.com/${pythonResponse.username || 'KiMi_'}/critiques`
-      };
-      
-      // S'assurer que reviews est un tableau
-      if (!profile.reviews || !Array.isArray(profile.reviews)) {
-        profile.reviews = [];
-      }
-      
-      console.log(`✅ ${profile.reviews.length} critiques récupérées depuis l'API Python`);
-      
-      cachedSensCritique = profile;
-      lastSCFetch = now;
-      
-      res.json(profile);
-      
-    } catch (pythonError) {
-      console.error('❌ Erreur API Python:', pythonError.message);
-      // Fallback vers l'ancien scraper si l'API Python n'est pas disponible
-      console.log('🔄 Fallback vers l\'ancien scraper...');
-      const profile = await fetchSensCritiqueProfile('KiMi_');
-      
-      if (!profile.reviews || !Array.isArray(profile.reviews)) {
-        profile.reviews = [];
-      }
-      
-      cachedSensCritique = profile;
-      lastSCFetch = now;
-      
-      res.json(profile);
+    if (forceRefresh) {
+      console.log('🔄 [SensCritique] Force refresh demandé');
     }
+    
+    console.log('🎬 [SensCritique] Démarrage du scraping Puppeteer...');
+    const startTime = Date.now();
+    
+    // Appel direct du scraper Puppeteer optimisé (cache interne désactivé)
+    const profile = await fetchSensCritiqueProfile('KiMi_', {
+      loadReviews: true,
+      loadFavorites: true,
+      useCache: false // Désactiver le cache interne, le serveur gère son propre cache
+    });
+    
+    const scrapingTime = ((Date.now() - startTime) / 1000).toFixed(2);
+    console.log(`⏱️  [SensCritique] Scraping terminé en ${scrapingTime}s`);
+    
+    // Valider les données
+    if (!profile.reviews || !Array.isArray(profile.reviews)) {
+      console.warn('⚠️  [SensCritique] Aucune critique trouvée, initialisation à tableau vide');
+      profile.reviews = [];
+    }
+    
+    console.log(`✅ [SensCritique] ${profile.reviews.length} critique(s) récupérée(s)`);
+    
+    // Sauvegarder en cache
+    cachedSensCritique = profile;
+    lastSCFetch = now;
+    
+    res.json(profile);
     
   } catch (error) {
-    console.error('❌ Erreur Sens Critique:', error.message);
+    console.error('❌ [SensCritique] Erreur scraping:', error.message);
+    console.error('📍 [SensCritique] Stack:', error.stack);
+    
+    // Réponse avec fallback en cas d'erreur
     res.status(500).json({
       error: 'Impossible de récupérer le profil',
+      message: error.message,
       fallback: {
         username: 'KiMi_',
         gender: 'Homme',

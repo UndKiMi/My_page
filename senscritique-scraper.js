@@ -515,8 +515,8 @@ async function fetchSensCritiqueReviews(username) {
         // Timeout acceptable, on continue
       }
       
-      // Attendre un peu pour que tout soit chargé
-      await page.waitForTimeout(2000);
+      // Attendre un peu pour que tout soit chargé (remplacement de waitForTimeout)
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
       // Récupérer le HTML rendu
       const data = await page.content();

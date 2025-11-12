@@ -21,7 +21,7 @@ app.use(express.static('.', { maxAge: STATIC_MAX_AGE }));
 
 let cachedSensCritique = null;
 let lastSCFetch = 0;
-const SC_CACHE_DURATION = 300000; // 5 minutes au lieu de 1 heure pour forcer le rechargement
+const SC_CACHE_DURATION = 600000; // 10 minutes - bon équilibre entre performance et fraîcheur des données
 
 let cachedGitHub = null;
 let lastGitHubFetch = 0;

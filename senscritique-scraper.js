@@ -546,29 +546,41 @@ async function fetchSensCritiqueReviews(username) {
     
     let browser = null;
     try {
-      // Utiliser Puppeteer pour exécuter le JavaScript
+      // Utiliser Puppeteer pour exécuter le JavaScript (optimisé pour la performance)
       browser = await puppeteer.launch({
         headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--disable-gpu',
+          '--no-first-run',
+          '--no-zygote',
+          '--single-process'
+        ]
       });
       
       const page = await browser.newPage();
       await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
       
-      await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
       
-      // Attendre que les critiques soient chargées
+      // Attendre que les critiques soient chargées (timeout réduit)
       try {
-        await page.waitForSelector('article[data-testid="review-overview"]', { timeout: 10000 });
+        await page.waitForSelector('article[data-testid="review-overview"]', { timeout: 5000 });
       } catch (e) {
         // Timeout acceptable, on continue
       }
+      
+      // Attendre un peu pour le chargement initial
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
       // Faire défiler la page pour charger toutes les critiques (pagination infinie)
       let previousHeight = 0;
       let currentHeight = await page.evaluate(() => document.body.scrollHeight);
       let scrollAttempts = 0;
-      const maxScrollAttempts = 50; // Augmenter pour charger plus de critiques
+      const maxScrollAttempts = 30; // Réduit pour optimiser le temps de chargement
       let previousReviewCount = 0;
       let stableCount = 0; // Compteur pour vérifier que le nombre est stable
       
@@ -597,7 +609,7 @@ async function fetchSensCritiqueReviews(username) {
         
         if (buttonFound) {
           console.log('🔘 Bouton "Charger plus" trouvé et cliqué');
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          await new Promise(resolve => setTimeout(resolve, 1000));
         }
       } catch (e) {
         // Pas de bouton, on continue avec le scroll
@@ -606,12 +618,12 @@ async function fetchSensCritiqueReviews(username) {
       while (scrollAttempts < maxScrollAttempts) {
         previousHeight = currentHeight;
         
-        // Scroller progressivement (par petits incréments pour déclencher le lazy loading)
-        for (let i = 0; i < 10; i++) {
+        // Scroller progressivement (optimisé - moins d'attentes)
+        for (let i = 0; i < 5; i++) {
           await page.evaluate(() => {
-            window.scrollBy(0, 300);
+            window.scrollBy(0, 600);
           });
-          await new Promise(resolve => setTimeout(resolve, 200));
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
         
         // Scroller jusqu'en bas
@@ -619,8 +631,8 @@ async function fetchSensCritiqueReviews(username) {
           window.scrollTo(0, document.body.scrollHeight);
         });
         
-        // Attendre que le contenu se charge
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        // Attendre que le contenu se charge (timeout réduit)
+        await new Promise(resolve => setTimeout(resolve, 1500));
         
         // Essayer de cliquer sur le bouton "Charger plus" à nouveau
         try {
@@ -644,7 +656,7 @@ async function fetchSensCritiqueReviews(username) {
           });
           
           if (buttonClicked) {
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            await new Promise(resolve => setTimeout(resolve, 1000));
           }
         } catch (e) {
           // Ignorer les erreurs
@@ -667,8 +679,8 @@ async function fetchSensCritiqueReviews(username) {
           stableCount++;
         }
         
-        // Si la hauteur n'a pas changé ET le nombre de critiques est stable depuis 3 tentatives, on a tout chargé
-        if (previousHeight === currentHeight && stableCount >= 3) {
+        // Si la hauteur n'a pas changé ET le nombre de critiques est stable depuis 2 tentatives, on a tout chargé
+        if (previousHeight === currentHeight && stableCount >= 2) {
           console.log(`📜 Scroll terminé: ${currentReviewCount} critiques chargées après ${scrollAttempts} tentatives`);
           break;
         }
@@ -681,9 +693,8 @@ async function fetchSensCritiqueReviews(username) {
         console.log(`📜 Scroll arrêté à ${scrollAttempts} tentatives: ${finalCount} critiques chargées`);
       }
       
-      // Remonter en haut après le scroll
+      // Remonter en haut après le scroll (pas besoin d'attendre)
       await page.evaluate(() => window.scrollTo(0, 0));
-      await new Promise(resolve => setTimeout(resolve, 500));
       
       // Récupérer le HTML rendu
       const data = await page.content();

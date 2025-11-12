@@ -6,7 +6,7 @@ const CONFIG = {
   cacheDurations: {
     github: 10 * 60 * 1000,
     discord: 200,
-    sensCritique: 30 * 60 * 1000
+    sensCritique: 15 * 60 * 1000 // 15 minutes au lieu de 30 pour un meilleur équilibre
   }
 };
 
@@ -729,6 +729,9 @@ function updateUIWithSCData(data) {
       return;
     }
     
+    // Utiliser DocumentFragment pour optimiser le rendu (une seule opération DOM)
+    const fragment = document.createDocumentFragment();
+    
     reviewsToShow.forEach(review => {
       const reviewItem = document.createElement('a');
       reviewItem.className = 'sc-review-item';
@@ -770,8 +773,11 @@ function updateUIWithSCData(data) {
         <div class="sc-review-date">${formattedDate}</div>
       `;
 
-      reviewsContainer.appendChild(reviewItem);
+      fragment.appendChild(reviewItem);
     });
+    
+    // Ajouter tous les éléments en une seule opération DOM
+    reviewsContainer.appendChild(fragment);
   } else {
     console.warn('⚠️ Aucune critique trouvée dans les données');
     reviewsContainer.innerHTML = '<div class="sc-review-item">Aucune critique disponible</div>';
@@ -1106,9 +1112,17 @@ function useFallbackData(fallbackData) {
 document.addEventListener('DOMContentLoaded', () => {
   initElements();
   preloadBadgeIcons();
-  updateDiscordPresence();
+  
+  // Charger les données en parallèle pour optimiser le temps de chargement
+  Promise.all([
+    updateDiscordPresence(),
+    fetchGitHubStats(),
+    fetchSensCritiqueData()
+  ]).catch(error => {
+    console.error('Erreur lors du chargement initial:', error);
+  });
+  
+  // Mettre à jour Discord périodiquement
   setInterval(updateDiscordPresence, CONFIG.discordPollInterval);
-  fetchGitHubStats();
-  fetchSensCritiqueData();
 });
 

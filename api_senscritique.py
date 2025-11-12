@@ -138,15 +138,17 @@ def index():
     })
 
 
+# Charger le cache au démarrage (pour gunicorn et développement)
+load_cached_reviews()
+
 if __name__ == '__main__':
-    # Charger le cache au démarrage
-    load_cached_reviews()
-    
     # Port depuis la variable d'environnement ou 5000 par défaut
     port = int(os.environ.get('PORT', 5000))
     
     print(f"🚀 API SensCritique démarrée sur le port {port}")
     print(f"📡 Endpoint: http://localhost:{port}/api/critiques")
     
+    # En production, Railway utilisera gunicorn via le Procfile
+    # Ce code ne s'exécute que si on lance directement le fichier
     app.run(host='0.0.0.0', port=port, debug=False)
 

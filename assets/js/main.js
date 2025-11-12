@@ -467,7 +467,7 @@ async function generateActivityTable(events, repos = []) {
         </a>
       </td>
       <td class="commit-message">
-        ${repo.description || 'Pas de description'}
+        Chargement...
       </td>
       <td class="commit-time">${timeAgo || 'non disponible'}</td>
     `;
@@ -493,22 +493,34 @@ async function fetchLatestCommit(repo, row) {
     }
 
     const commits = await commitsResponse.json();
-    if (!Array.isArray(commits) || commits.length === 0) return;
+    if (!Array.isArray(commits) || commits.length === 0) {
+      // Si pas de commits, afficher un message par défaut
+      const commitMessageCell = row.querySelector('.commit-message');
+      if (commitMessageCell) {
+        commitMessageCell.textContent = 'Aucun commit';
+      }
+      return;
+    }
 
     const commit = commits[0];
-    const commitMessage = commit?.commit?.message;
+    // Extraire le message du commit (peut être dans commit.commit.message ou commit.message)
+    const commitMessage = commit?.commit?.message || commit?.message || null;
     
-    // NOUVELLE MÉTHODE: Extraire la date du commit (plus précise)
+    // Extraire la date du commit (plus précise)
     const commitDateISO = extractGitHubDate(repo, commit);
     
     // Mettre à jour le message du commit
-    if (commitMessage) {
-      const commitMessageCell = row.querySelector('.commit-message');
-      if (commitMessageCell) {
-        commitMessageCell.textContent = commitMessage.length > 30
-          ? `${commitMessage.slice(0, 30)}…`
-          : commitMessage;
+    const commitMessageCell = row.querySelector('.commit-message');
+    if (commitMessageCell) {
+      if (commitMessage) {
+        // Nettoyer le message (enlever les retours à la ligne)
+        const cleanMessage = commitMessage.split('\n')[0].trim();
+        commitMessageCell.textContent = cleanMessage.length > 40
+          ? `${cleanMessage.slice(0, 40)}…`
+          : cleanMessage;
         commitMessageCell.title = commitMessage;
+      } else {
+        commitMessageCell.textContent = 'Aucun message';
       }
     }
     

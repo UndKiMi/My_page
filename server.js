@@ -539,10 +539,10 @@ client.login(TOKEN).catch(err => {
   process.exit(1);
 });
 
-app.listen(PORT, () => {
-  console.log(`\n🚀 Serveur lancé sur http://localhost:${PORT}`);
-  console.log(`📡 Endpoint Discord: http://localhost:${PORT}/discord-status`);
-  console.log(`📡 Endpoint GitHub: http://localhost:${PORT}/github`);
-  console.log(`📡 Endpoint SensCritique: http://localhost:${PORT}/senscritique`);
-  console.log(`\n💡 Ouvrez index.html dans votre navigateur\n`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`\n🚀 Serveur lancé sur http://0.0.0.0:${PORT}`);
+  console.log(`📡 Endpoint Discord: http://0.0.0.0:${PORT}/discord-status`);
+  console.log(`📡 Endpoint GitHub: http://0.0.0.0:${PORT}/github`);
+  console.log(`📡 Endpoint SensCritique: http://0.0.0.0:${PORT}/senscritique`);
+  console.log(`\n💡 Serveur prêt à recevoir des requêtes\n`);
 });

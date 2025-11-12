@@ -154,11 +154,11 @@ function parseReviewsFromHTML(html) {
             }
           }
           
-          // Priorité 2: Si pas de date ISO, parser la date relative
+          // Priorité 2: Si pas de date ISO, parser la date relative ou française
           if (!finalDate && dateText) {
             if (dateText.includes('il y a')) {
               finalDate = parseRelativeDate(dateText);
-            } else if (dateText.match(/le \d{1,2}\s+\w+\.?\s+\d{4}/)) {
+            } else if (dateText.match(/le\s+\d{1,2}\s+\w+\.?\s+\d{4}/i)) {
               finalDate = parseFrenchDate(dateText);
             }
           }
@@ -521,11 +521,11 @@ function parseFrenchDate(dateText) {
     'déc': 11, 'décembre': 11
   };
   
-  // Pattern: "le 4 nov. 2025" ou "le 4 novembre 2025"
-  const match = dateText.match(/le\s+(\d{1,2})\s+(\w+)\.?\s+(\d{4})/i);
+  // Pattern: "le 4 nov. 2025" ou "le 4 novembre 2025" (avec ou sans "le")
+  const match = dateText.match(/(?:le\s+)?(\d{1,2})\s+(\w+)\.?\s+(\d{4})/i);
   if (match) {
     const day = parseInt(match[1]);
-    const monthName = match[2].toLowerCase();
+    const monthName = match[2].toLowerCase().replace(/\.$/, ''); // Enlever le point final
     const year = parseInt(match[3]);
     
     const month = months[monthName];
@@ -568,22 +568,34 @@ async function fetchSensCritiqueReviews(username) {
       let previousHeight = 0;
       let currentHeight = await page.evaluate(() => document.body.scrollHeight);
       let scrollAttempts = 0;
-      const maxScrollAttempts = 20; // Augmenter pour charger plus de critiques
+      const maxScrollAttempts = 30; // Augmenter pour charger plus de critiques
       let previousReviewCount = 0;
+      let stableCount = 0; // Compteur pour vérifier que le nombre est stable
+      
+      // Compter les critiques initiales
+      previousReviewCount = await page.evaluate(() => {
+        return document.querySelectorAll('article[data-testid="review-overview"]').length;
+      });
+      console.log(`📊 Critiques initiales: ${previousReviewCount}`);
       
       while (scrollAttempts < maxScrollAttempts) {
         previousHeight = currentHeight;
-        previousReviewCount = await page.evaluate(() => {
-          return document.querySelectorAll('article[data-testid="review-overview"]').length;
-        });
+        
+        // Scroller progressivement (par petits incréments pour déclencher le lazy loading)
+        for (let i = 0; i < 5; i++) {
+          await page.evaluate(() => {
+            window.scrollBy(0, 500);
+          });
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
         
         // Scroller jusqu'en bas
         await page.evaluate(() => {
           window.scrollTo(0, document.body.scrollHeight);
         });
         
-        // Attendre que le contenu se charge
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Attendre que le contenu se charge (augmenter le temps d'attente)
+        await new Promise(resolve => setTimeout(resolve, 3000));
         
         // Vérifier la nouvelle hauteur et le nombre de critiques
         currentHeight = await page.evaluate(() => document.body.scrollHeight);
@@ -593,13 +605,28 @@ async function fetchSensCritiqueReviews(username) {
         
         scrollAttempts++;
         
-        // Si la hauteur n'a pas changé ET le nombre de critiques n'a pas changé, on a tout chargé
-        if (previousHeight === currentHeight && previousReviewCount === currentReviewCount) {
+        // Si le nombre de critiques a augmenté, réinitialiser le compteur de stabilité
+        if (currentReviewCount > previousReviewCount) {
+          stableCount = 0;
+          previousReviewCount = currentReviewCount;
+          console.log(`📊 Critiques après scroll ${scrollAttempts}: ${currentReviewCount}`);
+        } else {
+          stableCount++;
+        }
+        
+        // Si la hauteur n'a pas changé ET le nombre de critiques est stable depuis 2 tentatives, on a tout chargé
+        if (previousHeight === currentHeight && stableCount >= 2) {
+          console.log(`📜 Scroll terminé: ${currentReviewCount} critiques chargées après ${scrollAttempts} tentatives`);
           break;
         }
       }
       
-      console.log(`📜 Scroll terminé après ${scrollAttempts} tentatives`);
+      if (scrollAttempts >= maxScrollAttempts) {
+        const finalCount = await page.evaluate(() => {
+          return document.querySelectorAll('article[data-testid="review-overview"]').length;
+        });
+        console.log(`📜 Scroll arrêté à ${scrollAttempts} tentatives: ${finalCount} critiques chargées`);
+      }
       
       // Remonter en haut après le scroll
       await page.evaluate(() => window.scrollTo(0, 0));

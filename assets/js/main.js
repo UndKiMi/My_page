@@ -829,7 +829,7 @@ function parseRelativeDateText(dateText) {
   const now = new Date();
   const lowerText = dateText.toLowerCase().trim();
   
-  // "Il y a X jour(s)"
+  // "Il y a X jour(s)" - accepter "jour" ou "jours"
   const joursMatch = lowerText.match(/il y a (\d+)\s*jour(s)?/i);
   if (joursMatch) {
     const days = parseInt(joursMatch[1]);
@@ -898,11 +898,11 @@ function parseFrenchDateText(dateText) {
     'déc': 11, 'décembre': 11
   };
   
-  // Pattern: "le 4 nov. 2025" ou "le 4 novembre 2025"
-  const match = dateText.match(/le\s+(\d{1,2})\s+(\w+)\.?\s+(\d{4})/i);
+  // Pattern: "le 4 nov. 2025" ou "le 4 novembre 2025" (avec ou sans "le")
+  const match = dateText.match(/(?:le\s+)?(\d{1,2})\s+(\w+)\.?\s+(\d{4})/i);
   if (match) {
     const day = parseInt(match[1]);
-    const monthName = match[2].toLowerCase();
+    const monthName = match[2].toLowerCase().replace(/\.$/, ''); // Enlever le point final
     const year = parseInt(match[3]);
     
     const month = months[monthName];

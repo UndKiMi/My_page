@@ -456,16 +456,9 @@ async function generateActivityTable(events, repos = []) {
     const row = document.createElement('tr');
     const repoName = repo.name;
     
-    // NOUVELLE MÉTHODE: Utiliser la fonction dédiée pour extraire la date
+    // Utiliser la fonction dédiée pour extraire la date
     const dateISO = extractGitHubDate(repo);
     const timeAgo = dateISO ? getTimeAgo(dateISO) : null;
-    
-    // Log pour déboguer
-    if (dateISO) {
-      console.log(`📅 Repository "${repoName}": dateISO=${dateISO}, timeAgo=${timeAgo}`);
-    } else {
-      console.log(`⚠️  Repository "${repoName}": aucune date trouvée`);
-    }
 
     row.innerHTML = `
       <td>
@@ -526,7 +519,6 @@ async function fetchLatestCommit(repo, row) {
         const timeAgo = getTimeAgo(commitDateISO);
         if (timeAgo) {
           commitTimeCell.textContent = timeAgo;
-          console.log(`📅 Date GitHub mise à jour avec le commit: ${commitDateISO} → ${timeAgo}`);
         }
       }
     }
@@ -549,31 +541,25 @@ function extractGitHubDate(repo, commit = null) {
   if (commit && commit.commit && commit.commit.author && commit.commit.author.date) {
     const commitDate = commit.commit.author.date;
     if (isValidDate(commitDate)) {
-      console.log(`📅 Date GitHub trouvée (commit): ${commitDate}`);
       return commitDate;
     }
   }
   
   // MÉTHODE 2: Utiliser pushed_at (date du dernier push)
   if (repo.pushed_at && isValidDate(repo.pushed_at)) {
-    console.log(`📅 Date GitHub trouvée (pushed_at): ${repo.pushed_at}`);
     return repo.pushed_at;
   }
   
   // MÉTHODE 3: Utiliser updated_at (date de dernière mise à jour)
   if (repo.updated_at && isValidDate(repo.updated_at)) {
-    console.log(`📅 Date GitHub trouvée (updated_at): ${repo.updated_at}`);
     return repo.updated_at;
   }
   
   // MÉTHODE 4: Utiliser created_at (date de création) en dernier recours
   if (repo.created_at && isValidDate(repo.created_at)) {
-    console.log(`📅 Date GitHub trouvée (created_at): ${repo.created_at}`);
     return repo.created_at;
   }
   
-  console.log(`⚠️  Aucune date valide trouvée pour le repository "${repo.name || 'inconnu'}"`);
-  console.log(`   pushed_at: ${repo.pushed_at || 'N/A'}, updated_at: ${repo.updated_at || 'N/A'}, created_at: ${repo.created_at || 'N/A'}`);
   return null;
 }
 
@@ -592,7 +578,6 @@ function parseGitHubDate(dateString) {
   
   // Vérifier le format ISO
   if (!/^\d{4}-\d{2}-\d{2}/.test(cleanedDate)) {
-    console.log(`⚠️  Format de date GitHub invalide: "${cleanedDate}"`);
     return null;
   }
   
@@ -601,7 +586,6 @@ function parseGitHubDate(dateString) {
   
   // Vérifier que la date est valide
   if (Number.isNaN(parsedDate.getTime())) {
-    console.log(`⚠️  Impossible de parser la date GitHub: "${cleanedDate}"`);
     return null;
   }
   
@@ -628,7 +612,6 @@ function getTimeAgo(date) {
 
   // Vérifier que la date est valide
   if (!parsedDate || Number.isNaN(parsedDate.getTime())) {
-    console.log(`⚠️  Date invalide dans getTimeAgo: ${date}`);
     return null;
   }
 
@@ -637,7 +620,6 @@ function getTimeAgo(date) {
 
   // Vérifier que la date n'est pas dans le futur
   if (seconds < 0) {
-    console.log(`⚠️  Date dans le futur: ${parsedDate.toISOString()}`);
     return null;
   }
   

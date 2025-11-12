@@ -387,6 +387,11 @@
       cursor: help;
     }
     
+    .guild-icon-hover:hover {
+      transform: scale(2);
+      box-shadow: 0 6px 20px rgba(79, 70, 229, 0.8);
+    }
+    
     /* About section compact */
     .about-content {
       color: var(--text-dim);
@@ -1191,7 +1196,7 @@
   <div class="container">
     <nav class="sidebar" aria-label="Navigation principale">
       <div class="profile-pic-container">
-        <img src="https://avatars.githubusercontent.com/u/51194216?v=4" alt="Photo de profil GitHub" class="profile-pic">
+        <img src="https://avatars.githubusercontent.com/u/51194216?v=4" alt="Photo de profil GitHub" class="profile-pic" loading="lazy">
       </div>
       <h2>Navigation</h2>
       <div class="nav-links" role="navigation">
@@ -1229,7 +1234,7 @@
           <div class="sc-profile-card">
             <div class="sc-header">
               <div class="sc-logo">
-                <img src="https://www.senscritique.com/logo/senscritique.png" alt="Sens Critique Logo" class="sc-logo-img">
+                <img src="https://www.senscritique.com/logo/senscritique.png" alt="Sens Critique Logo" class="sc-logo-img" loading="lazy">
               </div>
               <div class="sc-user-info">
                 <h3 id="sc-username">KiMi</h3>
@@ -1306,13 +1311,13 @@
             </li>
             <li>
               <a class="project-card" href="https://github.com/UndKiMi/Medal-Bot" target="_blank">
-                <span class="pc-icon">🤖</span>
+                <span class="pc-icon">🧑‍💻</span>
                 <div class="pc-content">
                   <div class="pc-title">
                     <span class="pc-name">Medal-Bot</span>
                     <span class="pc-badge">Public</span>
                   </div>
-                  <div class="pc-desc">Bot Discord multifonction pour l'équipe McDonald's</div>
+                  <div class="pc-desc">Made with ❤️ for McDonald's employees 🍔 Bon appétit ! 🍟</div>
                   <div class="pc-meta">
                     <span class="pc-lang"><span class="pc-dot pc-blue"></span>Python</span>
                     <span class="pc-stars">⭐ 1</span>
@@ -1322,7 +1327,7 @@
             </li>
             <li>
               <a class="project-card" href="https://github.com/UndKiMi/K.Ring" target="_blank">
-                <span class="pc-icon">🔔</span>
+                <span class="pc-icon">🤖</span>
                 <div class="pc-content">
                   <div class="pc-title">
                     <span class="pc-name">K.Ring</span>
@@ -1398,54 +1403,30 @@
     const GITHUB_PROFILE_URL = `https://github.com/${GITHUB_USERNAME}`;
     const GITHUB_API_URL = `https://api.github.com/users/${GITHUB_USERNAME}`;
     
-    // Cache pour les éléments DOM
-    const elements = {
-      // Discord
-      discord: {
-        avatar: document.getElementById("discord-avatar"),
-        username: document.getElementById("discord-username"),
-        status: document.getElementById("discord-status"),
-        statusText: document.getElementById("discord-status-text"),
-        activity: document.getElementById("discord-activity"),
-        streaming: document.getElementById("discord-streaming"),
-        badges: document.getElementById("discord-badges")
-      },
-      // GitHub
-      github: {
-        contributions: document.getElementById("total-contributions"),
-        streak: document.getElementById("current-streak"),
-        repos: document.getElementById("total-repos"),
-        followers: document.getElementById("followers"),
-        activityTable: document.getElementById("github-activity-tbody")
-      },
-      // Sens Critique
-      sc: {
-        username: document.getElementById('sc-username'),
-        bio: document.getElementById('sc-bio'),
-        movies: document.getElementById('sc-movies'),
-        series: document.getElementById('sc-series'),
-        games: document.getElementById('sc-games'),
-        reviews: document.getElementById('sc-reviews'),
-        reviewsContainer: document.getElementById('sc-reviews-container'),
-        favoritesGrid: document.getElementById('sc-favorites-grid'),
-        moviesCard: document.getElementById('sc-movies-card'),
-        seriesCard: document.getElementById('sc-series-card'),
-        gamesCard: document.getElementById('sc-games-card'),
-        reviewsCard: document.getElementById('sc-reviews-card')
-      }
-    };
+    // Cache pour les éléments DOM (sera initialisé après le chargement du DOM)
+    let elements = {};
     
     // Cache pour les données
     const dataCache = {
       github: null,
       lastGithubFetch: 0,
-      GITHUB_CACHE_DURATION: 10 * 60 * 1000, // 10 minutes
+      GITHUB_CACHE_DURATION: 10 * 60 * 1000,
       discord: null,
       lastDiscordFetch: 0,
-      DISCORD_CACHE_DURATION: 5 * 1000, // 5 secondes
+      lastDiscordData: null,
+      DISCORD_CACHE_DURATION: 200,
       sc: null,
       lastScFetch: 0,
-      SC_CACHE_DURATION: 30 * 60 * 1000 // 30 minutes
+      SC_CACHE_DURATION: 30 * 60 * 1000
+    };
+    
+    let discordFetchInProgress = false;
+    
+    const activityLogos = {
+      youtube: { url: 'https://upload.wikimedia.org/wikipedia/commons/e/ef/Youtube_logo.png', height: '18px' },
+      twitch: { url: 'https://pngimg.com/uploads/twitch/twitch_PNG12.png', height: '25px' },
+      spotify: { url: 'https://storage.googleapis.com/pr-newsroom-wp/1/2023/05/Spotify_Primary_Logo_RGB_Green-300x300.png', height: '18px' },
+      netflix: { url: 'https://cdn.rcd.gg/PreMiD/websites/N/Netflix/assets/logo.png', height: '18px' }
     };
     
     // Cache pour les icônes de badges Discord
@@ -1533,7 +1514,17 @@
     
     // Précharger les icônes de badges
     function preloadBadgeIcons() {
-      Object.values(getDiscordBadgeInfo).forEach(badge => {
+      const badgeFlags = [
+        'Staff', 'Partner', 'Hypesquad', 'BugHunterLevel1', 'HypeSquadOnlineHouse1',
+        'HypeSquadOnlineHouse2', 'HypeSquadOnlineHouse3', 'PremiumEarlySupporter',
+        'BugHunterLevel2', 'VerifiedBot', 'VerifiedDeveloper', 'CertifiedModerator',
+        'ActiveDeveloper', 'Nitro', 'BotHTTPInteractions', 'Spammer', 'DisablePremium',
+        'HasUnreadUrgentMessages', 'Quarantined', 'Collaborator', 'RestrictedCollaborator',
+        'QuestCompleted', 'GuildProductPurchaser', 'SupportsCommands', 'ApplicationAutoModerationRuleCreateBadge'
+      ];
+      
+      badgeFlags.forEach(flag => {
+        const badge = getDiscordBadgeInfo(flag);
         if (badge && badge.icon) {
           const img = new Image();
           img.src = badge.icon;
@@ -1565,44 +1556,42 @@
     }
     
     // Fonction pour mettre à jour le statut Discord
-    function updateDiscordPresence() {
+    async function updateDiscordPresence() {
       const now = Date.now();
       
-      // Utiliser le cache si disponible et récent
+      if (discordFetchInProgress) return;
+      
       if (dataCache.discord && (now - dataCache.lastDiscordFetch) < dataCache.DISCORD_CACHE_DURATION) {
-        console.log('Utilisation du cache Discord');
-        updateUIWithDiscordData(dataCache.discord);
         return;
       }
       
-      // Essayer de se connecter au backend
-      fetch(`${BACKEND_URL}/discord-status`)
-        .then(res => {
-          if (!res.ok) {
-            throw new Error(`HTTP ${res.status}`);
-          }
-          return res.json();
-        })
-        .then(data => {
-          if (!data.user) {
-            throw new Error("Utilisateur non trouvé");
-          }
-          
-          // Mettre en cache les données
+      discordFetchInProgress = true;
+      
+      try {
+        const res = await fetch(`${BACKEND_URL}/discord-status`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        
+        const data = await res.json();
+        if (!data.user) throw new Error("Utilisateur non trouvé");
+        
+        const dataStr = JSON.stringify(data);
+        if (dataStr !== dataCache.lastDiscordData) {
           dataCache.discord = data;
-          dataCache.lastDiscordFetch = now;
-          
+          dataCache.lastDiscordData = dataStr;
           updateUIWithDiscordData(data);
-        })
-        .catch(err => {
-          console.error("Erreur lors de la récupération du statut Discord:", err);
-          
-          // Afficher un statut par défaut si le backend n'est pas disponible
+        }
+        
+        dataCache.lastDiscordFetch = now;
+      } catch (err) {
+        if (!dataCache.discord) {
           elements.discord.username.textContent = "KiMi";
           elements.discord.status.className = "status-dot offline";
           elements.discord.statusText.textContent = "Serveur hors ligne";
           elements.discord.activity.textContent = "Démarrez le serveur backend pour voir le statut Discord";
-        });
+        }
+      } finally {
+        discordFetchInProgress = false;
+      }
     }
     
     // Mettre à jour l'interface avec les données Discord
@@ -1634,15 +1623,25 @@
       
       // Mettre à jour l'activité
       if (data.voiceState) {
-        let voiceText = `🎤 En vocal dans ${data.voiceState.channelName}`;
-        if (data.voiceState.video) voiceText += ' 📹';
-        if (data.voiceState.selfMute) voiceText += ' 🔇';
-        if (data.voiceState.selfDeaf) voiceText += ' 🎧';
-        elements.discord.activity.textContent = voiceText;
+        const guildIcon = data.voiceState.guildIcon;
+        const guildId = data.voiceState.guildId;
+        
+        let voiceHTML = '';
+        if (guildIcon && guildId) {
+          const iconUrl = `https://cdn.discordapp.com/icons/${guildId}/${guildIcon}.png?size=32`;
+          voiceHTML = `<img src="${iconUrl}" class="guild-icon-hover" style="width: 16px; height: 16px; border-radius: 50%; vertical-align: middle; margin-right: 4px; transition: transform 0.3s ease, box-shadow 0.3s ease; cursor: pointer;" alt="Serveur"> En vocal dans ${data.voiceState.channelName}`;
+        } else {
+          voiceHTML = `🎤 En vocal dans ${data.voiceState.channelName}`;
+        }
+        
+        if (data.voiceState.video) voiceHTML += ' 📺';
+        if (data.voiceState.selfMute || data.voiceState.selfDeaf) voiceHTML += ' 🔇';
+        
+        elements.discord.activity.innerHTML = voiceHTML;
         elements.discord.activity.style.color = '#5865F2';
         
         if (data.voiceState.streaming) {
-          elements.discord.streaming.textContent = '🔴 En partage d\'écran';
+          elements.discord.streaming.textContent = '📺 En partage d\'écran';
           elements.discord.streaming.style.display = 'block';
           elements.discord.streaming.style.color = '#ed4245';
           elements.discord.streaming.style.fontWeight = '600';
@@ -1651,16 +1650,24 @@
         }
       } else if (data.activities && data.activities.length > 0) {
         const activity = data.activities[0];
-        let activityText = activity.name;
+        const activityKey = activity.name.toLowerCase();
+        const logo = activityLogos[activityKey];
+        
+        let activityHTML = '';
+        if (logo) {
+          activityHTML = `<img src="${logo.url}" class="activity-icon" style="height: ${logo.height}; width: auto; vertical-align: middle; margin-right: 4px;" alt="${activity.name}" loading="lazy"> `;
+        }
+        
+        activityHTML += activity.name;
         
         if (activity.details) {
-          activityText += ` - ${activity.details}`;
+          activityHTML += ` - ${activity.details}`;
         }
         if (activity.state) {
-          activityText += ` (${activity.state})`;
+          activityHTML += ` (${activity.state})`;
         }
         
-        elements.discord.activity.textContent = activityText;
+        elements.discord.activity.innerHTML = activityHTML;
         elements.discord.activity.style.color = 'var(--text-dim)';
         elements.discord.streaming.style.display = 'none';
       } else {
@@ -2252,14 +2259,48 @@
     
     // Initialisation
     document.addEventListener('DOMContentLoaded', function() {
+      // Initialiser les éléments DOM
+      elements = {
+        discord: {
+          avatar: document.getElementById("discord-avatar"),
+          username: document.getElementById("discord-username"),
+          status: document.getElementById("discord-status"),
+          statusText: document.getElementById("discord-status-text"),
+          activity: document.getElementById("discord-activity"),
+          streaming: document.getElementById("discord-streaming"),
+          badges: document.getElementById("discord-badges")
+        },
+        github: {
+          contributions: document.getElementById("total-contributions"),
+          streak: document.getElementById("current-streak"),
+          repos: document.getElementById("total-repos"),
+          followers: document.getElementById("followers"),
+          activityTable: document.getElementById("github-activity-tbody")
+        },
+        sc: {
+          username: document.getElementById('sc-username'),
+          bio: document.getElementById('sc-bio'),
+          movies: document.getElementById('sc-movies'),
+          series: document.getElementById('sc-series'),
+          games: document.getElementById('sc-games'),
+          reviews: document.getElementById('sc-reviews'),
+          reviewsContainer: document.getElementById('sc-reviews-container'),
+          favoritesGrid: document.getElementById('sc-favorites-grid'),
+          moviesCard: document.getElementById('sc-movies-card'),
+          seriesCard: document.getElementById('sc-series-card'),
+          gamesCard: document.getElementById('sc-games-card'),
+          reviewsCard: document.getElementById('sc-reviews-card')
+        }
+      };
+      
       // Précharger les icônes de badges
       preloadBadgeIcons();
       
       // Mettre à jour le statut Discord immédiatement
       updateDiscordPresence();
       
-      // Mettre à jour toutes les 5 secondes
-      setInterval(updateDiscordPresence, 5000);
+      // Mettre à jour toutes les 500ms (optimisé avec cache côté client)
+      setInterval(updateDiscordPresence, 500);
       
       // Charger les vraies statistiques GitHub
       fetchGitHubStats();

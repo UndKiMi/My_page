@@ -40,10 +40,29 @@ let cachedPresence = {
   activities: []
 };
 
+let lastPresenceHash = null;
+
+function hashPresence(presence) {
+  return JSON.stringify({
+    status: presence.status,
+    activities: presence.activities?.map(a => ({ name: a.name, details: a.details, state: a.state })),
+    voiceState: presence.voiceState ? {
+      channelId: presence.voiceState.channelId,
+      streaming: presence.voiceState.streaming,
+      video: presence.voiceState.video,
+      selfMute: presence.voiceState.selfMute,
+      selfDeaf: presence.voiceState.selfDeaf
+    } : null
+  });
+}
+
 client.once('ready', async () => {
   console.log(`✅ Bot connecté: ${client.user.tag}`);
   console.log(`📊 Serveurs: ${client.guilds.cache.size}`);
   console.log(`🔍 Recherche de l'utilisateur ${TARGET_USER_ID}...\n`);
+
+  let targetGuild = null;
+  let targetMember = null;
 
   for (const [guildId, guild] of client.guilds.cache) {
     try {
@@ -66,12 +85,41 @@ client.once('ready', async () => {
         console.log(`✅ Utilisateur trouvé dans: ${guild.name}`);
         console.log(`👤 Username: ${member.user.username}`);
         console.log(`📡 Statut: ${member.presence?.status || 'offline'}\n`);
+        targetGuild = guild;
+        targetMember = member;
         break;
       }
     } catch (err) {
       console.log(`⚠️  Utilisateur non trouvé dans ${guild.name}`);
     }
   }
+
+  setInterval(async () => {
+    if (targetGuild && targetMember) {
+      try {
+        const freshMember = await targetGuild.members.fetch(TARGET_USER_ID, { force: true, cache: false });
+        if (freshMember) {
+          const newHash = hashPresence({
+            status: freshMember.presence?.status || 'offline',
+            activities: freshMember.presence?.activities,
+            voiceState: freshMember.voice?.channel ? {
+              channelId: freshMember.voice.channel.id,
+              streaming: freshMember.voice.streaming,
+              video: freshMember.voice.selfVideo,
+              selfMute: freshMember.voice.selfMute,
+              selfDeaf: freshMember.voice.selfDeaf
+            } : null
+          });
+          
+          if (newHash !== lastPresenceHash) {
+            lastPresenceHash = newHash;
+            updatePresenceCache(freshMember, true);
+          }
+        }
+      } catch (err) {
+      }
+    }
+  }, 1000);
 });
 
 client.on('presenceUpdate', (oldPresence, newPresence) => {
@@ -88,7 +136,7 @@ client.on('voiceStateUpdate', (oldState, newState) => {
   }
 });
 
-function updatePresenceCache(member) {
+function updatePresenceCache(member, silent = false) {
   if (!member) return;
 
   let userFlags = member.user.flags?.toArray() || [];
@@ -100,31 +148,35 @@ function updatePresenceCache(member) {
       const badgesData = JSON.parse(fs.readFileSync(badgesPath, 'utf8'));
       if (badgesData.badges && Array.isArray(badgesData.badges)) {
         userFlags = [...new Set([...userFlags, ...badgesData.badges])];
-        console.log('✅ Badges personnalisés chargés depuis user-badges.json');
+        if (!silent) console.log('✅ Badges personnalisés chargés depuis user-badges.json');
       }
     }
   } catch (err) {
-    console.log('⚠️ Erreur lors du chargement des badges personnalisés:', err.message);
+    if (!silent) console.log('⚠️ Erreur lors du chargement des badges personnalisés:', err.message);
   }
   
-  console.log('🎖️ FLAGS DÉTECTÉS:');
-  console.log('   - flags:', userFlags);
-  console.log('   - publicFlags:', userPublicFlags);
-  console.log('   - premiumType:', member.user.premiumType);
-  console.log('   - accentColor:', member.user.accentColor);
-  console.log('   - banner:', member.user.banner);
+  if (!silent) {
+    console.log('🎖️ FLAGS DÉTECTÉS:');
+    console.log('   - flags:', userFlags);
+    console.log('   - publicFlags:', userPublicFlags);
+    console.log('   - premiumType:', member.user.premiumType);
+    console.log('   - accentColor:', member.user.accentColor);
+    console.log('   - banner:', member.user.banner);
+  }
 
   const voiceChannel = member.voice?.channel;
   const isStreaming = member.voice?.streaming || false;
   const isVideo = member.voice?.selfVideo || false;
   
-  if (voiceChannel) {
-    let voiceInfo = `🎤 Utilisateur en vocal: ${voiceChannel.name} dans ${voiceChannel.guild.name}`;
-    if (isStreaming) voiceInfo += ' 🔴 (streaming)';
-    if (isVideo) voiceInfo += ' 📹 (caméra)';
-    console.log(voiceInfo);
-  } else {
-    console.log('🔇 Utilisateur pas en vocal');
+  if (!silent) {
+    if (voiceChannel) {
+      let voiceInfo = `🎤 Utilisateur en vocal: ${voiceChannel.name} dans ${voiceChannel.guild.name}`;
+      if (isStreaming) voiceInfo += ' 🔴 (streaming)';
+      if (isVideo) voiceInfo += ' 📹 (caméra)';
+      console.log(voiceInfo);
+    } else {
+      console.log('🔇 Utilisateur pas en vocal');
+    }
   }
   
   cachedPresence = {
@@ -159,6 +211,8 @@ function updatePresenceCache(member) {
       channelName: voiceChannel.name,
       channelId: voiceChannel.id,
       serverName: voiceChannel.guild.name,
+      guildId: voiceChannel.guild.id,
+      guildIcon: voiceChannel.guild.icon,
       selfMute: member.voice.selfMute || false,
       selfDeaf: member.voice.selfDeaf || false,
       serverMute: member.voice.serverMute || false,

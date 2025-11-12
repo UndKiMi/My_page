@@ -378,21 +378,12 @@ app.get('/senscritique', async (req, res) => {
       return res.json(cachedSensCritique);
     }
     
-    console.log('🎬 Récupération du profil Sens Critique...');
-    console.log('🔍 Démarrage du scraping des critiques...');
+    console.log('🎬 Récupération du profil SensCritique...');
     const profile = await fetchSensCritiqueProfile('KiMi_');
     
     cachedSensCritique = profile;
     lastSCFetch = now;
     
-    console.log('✅ Profil Sens Critique récupéré:', {
-      username: profile.username,
-      stats: profile.stats,
-      collections: profile.collections?.length || 0,
-      reviews: profile.reviews?.length || 0
-    });
-    
-    console.log(profile) 
     res.json(profile);
     
   } catch (error) {

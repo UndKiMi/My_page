@@ -720,7 +720,9 @@ function updateUIWithSCData(data) {
   reviewsContainer.innerHTML = '';
 
   if (data.reviews && data.reviews.length > 0 && data.reviews[0].content) {
-    const reviewsToShow = data.reviews.slice(0, 50);
+    // Afficher TOUTES les critiques, pas seulement 50
+    const reviewsToShow = data.reviews; // Pas de limite
+    console.log(`📝 Affichage de ${reviewsToShow.length} critiques`);
     reviewsToShow.forEach(review => {
       const reviewItem = document.createElement('a');
       reviewItem.className = 'sc-review-item';

@@ -339,10 +339,15 @@ function updateUIWithGitHubData(data) {
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
+  // NOUVELLE MÉTHODE: Utiliser parseGitHubDate pour parser correctement les dates
   const recentEvents = (events || []).filter(event => {
     try {
-      return event?.created_at && new Date(event.created_at) > thirtyDaysAgo;
-    } catch {
+      if (!event?.created_at) return false;
+      const eventDate = parseGitHubDate(event.created_at);
+      if (!eventDate) return false;
+      return eventDate > thirtyDaysAgo;
+    } catch (error) {
+      console.log(`⚠️  Erreur lors du parsing de la date d'événement:`, error);
       return false;
     }
   });
@@ -359,10 +364,17 @@ function calculateStreak(events = []) {
   const today = new Date();
   const dateSet = new Set();
 
+  // NOUVELLE MÉTHODE: Utiliser parseGitHubDate pour parser correctement les dates
   events.forEach(event => {
     if (!event?.created_at) return;
-    const date = event.created_at.split('T')[0];
-    dateSet.add(date);
+    
+    // Parser la date avec la fonction dédiée
+    const eventDate = parseGitHubDate(event.created_at);
+    if (!eventDate) return;
+    
+    // Extraire la date au format YYYY-MM-DD
+    const dateStr = eventDate.toISOString().split('T')[0];
+    dateSet.add(dateStr);
   });
 
   let streak = 0;
@@ -437,8 +449,10 @@ async function generateActivityTable(events, repos = []) {
 
     const row = document.createElement('tr');
     const repoName = repo.name;
-    const updatedTime = repo.updated_at || repo.pushed_at || new Date().toISOString();
-    const timeAgo = getTimeAgo(updatedTime);
+    
+    // NOUVELLE MÉTHODE: Utiliser la fonction dédiée pour extraire la date
+    const dateISO = extractGitHubDate(repo);
+    const timeAgo = dateISO ? getTimeAgo(dateISO) : 'Date inconnue';
 
     row.innerHTML = `
       <td>
@@ -449,11 +463,12 @@ async function generateActivityTable(events, repos = []) {
       <td class="commit-message">
         ${repo.description || 'Pas de description'}
       </td>
-      <td class="commit-time">${timeAgo}</td>
+      <td class="commit-time">${timeAgo || 'Date inconnue'}</td>
     `;
 
     tbody.appendChild(row);
 
+    // Récupérer le dernier commit pour mettre à jour la date et le message
     if (repo.full_name) {
       fetchLatestCommit(repo, row);
     }
@@ -468,59 +483,165 @@ async function fetchLatestCommit(repo, row) {
     const commits = await commitsResponse.json();
     if (!Array.isArray(commits) || commits.length === 0) return;
 
-    const commitMessage = commits[0]?.commit?.message;
-    if (!commitMessage) return;
-
-    const commitMessageCell = row.querySelector('.commit-message');
-    if (!commitMessageCell) return;
-
-    commitMessageCell.textContent = commitMessage.length > 30
-      ? `${commitMessage.slice(0, 30)}…`
-      : commitMessage;
-    commitMessageCell.title = commitMessage;
-  } catch {
+    const commit = commits[0];
+    const commitMessage = commit?.commit?.message;
+    
+    // NOUVELLE MÉTHODE: Extraire la date du commit (plus précise)
+    const commitDateISO = extractGitHubDate(repo, commit);
+    
+    // Mettre à jour le message du commit
+    if (commitMessage) {
+      const commitMessageCell = row.querySelector('.commit-message');
+      if (commitMessageCell) {
+        commitMessageCell.textContent = commitMessage.length > 30
+          ? `${commitMessage.slice(0, 30)}…`
+          : commitMessage;
+        commitMessageCell.title = commitMessage;
+      }
+    }
+    
+    // Mettre à jour la date affichée avec la date du commit (plus précise)
+    if (commitDateISO) {
+      const commitTimeCell = row.querySelector('.commit-time');
+      if (commitTimeCell) {
+        const timeAgo = getTimeAgo(commitDateISO);
+        if (timeAgo) {
+          commitTimeCell.textContent = timeAgo;
+          console.log(`📅 Date GitHub mise à jour avec le commit: ${commitDateISO} → ${timeAgo}`);
+        }
+      }
+    }
+  } catch (error) {
     // Ignore commit fetch errors silently
+    console.log(`⚠️  Erreur lors de la récupération du commit pour ${repo.full_name}:`, error);
   }
 }
 
+// Fonction robuste pour extraire la date d'un repository GitHub
+function extractGitHubDate(repo, commit = null) {
+  let dateISO = null;
+  
+  // MÉTHODE 1: Utiliser la date du commit si disponible (la plus précise)
+  if (commit && commit.commit && commit.commit.author && commit.commit.author.date) {
+    dateISO = commit.commit.author.date;
+    console.log(`📅 Date GitHub trouvée (commit): ${dateISO}`);
+    return dateISO;
+  }
+  
+  // MÉTHODE 2: Utiliser pushed_at (date du dernier push)
+  if (repo.pushed_at) {
+    dateISO = repo.pushed_at;
+    console.log(`📅 Date GitHub trouvée (pushed_at): ${dateISO}`);
+    return dateISO;
+  }
+  
+  // MÉTHODE 3: Utiliser updated_at (date de dernière mise à jour)
+  if (repo.updated_at) {
+    dateISO = repo.updated_at;
+    console.log(`📅 Date GitHub trouvée (updated_at): ${dateISO}`);
+    return dateISO;
+  }
+  
+  // MÉTHODE 4: Utiliser created_at (date de création) en dernier recours
+  if (repo.created_at) {
+    dateISO = repo.created_at;
+    console.log(`📅 Date GitHub trouvée (created_at): ${dateISO}`);
+    return dateISO;
+  }
+  
+  console.log(`⚠️  Aucune date trouvée pour le repository "${repo.name || 'inconnu'}"`);
+  return null;
+}
+
+// Fonction pour parser une date GitHub (format ISO 8601)
+function parseGitHubDate(dateString) {
+  if (!dateString) return null;
+  
+  // Les dates GitHub sont au format ISO 8601: "2024-01-15T10:30:00Z"
+  // Vérifier que c'est bien une date ISO valide
+  if (typeof dateString !== 'string') {
+    return null;
+  }
+  
+  // Nettoyer la date (enlever les espaces, etc.)
+  const cleanedDate = dateString.trim();
+  
+  // Vérifier le format ISO
+  if (!/^\d{4}-\d{2}-\d{2}/.test(cleanedDate)) {
+    console.log(`⚠️  Format de date GitHub invalide: "${cleanedDate}"`);
+    return null;
+  }
+  
+  // Parser la date
+  const parsedDate = new Date(cleanedDate);
+  
+  // Vérifier que la date est valide
+  if (Number.isNaN(parsedDate.getTime())) {
+    console.log(`⚠️  Impossible de parser la date GitHub: "${cleanedDate}"`);
+    return null;
+  }
+  
+  return parsedDate;
+}
+
+// Fonction améliorée pour formater une date en "il y a X"
 function getTimeAgo(date) {
   if (!date) return null;
 
+  // Si c'est une string, essayer de la parser d'abord avec parseGitHubDate
   let parsedDate;
   if (typeof date === 'string') {
-    parsedDate = new Date(date);
+    parsedDate = parseGitHubDate(date);
+    // Si parseGitHubDate a échoué, essayer le parsing standard
+    if (!parsedDate) {
+      parsedDate = new Date(date);
+    }
   } else if (date instanceof Date) {
     parsedDate = date;
   } else {
     return null;
   }
 
-  if (Number.isNaN(parsedDate.getTime())) {
+  // Vérifier que la date est valide
+  if (!parsedDate || Number.isNaN(parsedDate.getTime())) {
+    console.log(`⚠️  Date invalide dans getTimeAgo: ${date}`);
     return null;
   }
 
   const now = new Date();
   const seconds = Math.floor((now - parsedDate) / 1000);
 
-  if (seconds < 0) return null;
-  if (seconds < 60) return 'À l’instant';
+  // Vérifier que la date n'est pas dans le futur
+  if (seconds < 0) {
+    console.log(`⚠️  Date dans le futur: ${parsedDate.toISOString()}`);
+    return null;
+  }
+  
+  // Moins d'une minute
+  if (seconds < 60) return 'À l\'instant';
 
+  // Moins d'une heure
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes} min`;
 
+  // Moins d'un jour
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h`;
 
+  // Moins d'une semaine
   const days = Math.floor(hours / 24);
   if (days === 1) return 'Hier';
   if (days < 7) return `${days}j`;
 
+  // Moins d'un mois
   const weeks = Math.floor(days / 7);
   if (weeks < 4) return `${weeks} sem`;
 
+  // Moins d'un an
   const months = Math.floor(days / 30);
   if (months < 12) return `${months} mois`;
 
+  // Plus d'un an
   const years = Math.floor(days / 365);
   return `${years} an${years > 1 ? 's' : ''}`;
 }

@@ -2,6 +2,51 @@ const https = require('https');
 const { JSDOM } = require('jsdom');
 const puppeteer = require('puppeteer');
 
+// ============================================================================
+// SYSTÈME DE CACHE
+// ============================================================================
+
+const cache = new Map();
+
+/**
+ * Récupère les données depuis le cache
+ * @param {string} key - Clé du cache
+ * @returns {Object|null} Données en cache ou null
+ */
+function getFromCache(key) {
+  const cached = cache.get(key);
+  if (!cached) return null;
+  
+  const now = Date.now();
+  if (now - cached.timestamp > cached.ttl) {
+    cache.delete(key);
+    return null;
+  }
+  
+  return cached.data;
+}
+
+/**
+ * Sauvegarde les données dans le cache
+ * @param {string} key - Clé du cache
+ * @param {Object} data - Données à mettre en cache
+ * @param {number} ttl - Durée de vie en millisecondes (défaut: 5 minutes)
+ */
+function saveToCache(key, data, ttl = 300000) {
+  cache.set(key, {
+    data,
+    timestamp: Date.now(),
+    ttl
+  });
+}
+
+/**
+ * Vide le cache
+ */
+function clearCache() {
+  cache.clear();
+}
+
 // Fonction pour parser les critiques depuis le HTML brut
 function parseReviewsFromHTML(html) {
   const reviews = [];
@@ -1150,7 +1195,16 @@ async function fetchSensCritiqueFavorites(username) {
   });
 }
 
-async function fetchSensCritiqueProfile(username) {
+// ============================================================================
+// FONCTION DE BASE : Récupération du profil de base (sans critiques/favoris)
+// ============================================================================
+
+/**
+ * Récupère uniquement le profil de base (stats, bio, etc.) sans critiques ni favoris
+ * @param {string} username - Nom d'utilisateur SensCritique
+ * @returns {Promise<Object>} Profil de base
+ */
+async function fetchBasicProfile(username) {
   return new Promise((resolve, reject) => {
     const url = `https://www.senscritique.com/${username}`;
     
@@ -1169,7 +1223,7 @@ async function fetchSensCritiqueProfile(username) {
         data += chunk;
       });
       
-      res.on('end', async () => {
+      res.on('end', () => {
         try {
           const dom = new JSDOM(data);
           const document = dom.window.document;
@@ -1212,52 +1266,6 @@ async function fetchSensCritiqueProfile(username) {
             stats.livres = parseInt(livresMatch[1]);
           }
           
-          let collections = [];
-          
-          try {
-            collections = await fetchSensCritiqueFavorites(username);
-            
-            if (collections.length === 0) {
-              console.log('⚠️  Aucun coup de cœur trouvé, utilisation des collections générales');
-              const imgRegex = /<img[^>]+alt="([^"]+)"[^>]+src="(https:\/\/media\.senscritique\.com[^"]+)"/gi;
-              let match;
-              
-              while ((match = imgRegex.exec(data)) !== null) {
-                const title = match[1];
-                const image = match[2];
-                if (title && image && !title.includes('KiMi_')) {
-                  collections.push({ title, image });
-                }
-              }
-            }
-          } catch (favError) {
-            console.log('⚠️  Erreur récupération coups de cœur, fallback sur collections générales');
-            const imgRegex = /<img[^>]+alt="([^"]+)"[^>]+src="(https:\/\/media\.senscritique\.com[^"]+)"/gi;
-            let match;
-            
-            while ((match = imgRegex.exec(data)) !== null) {
-              const title = match[1];
-              const image = match[2];
-              if (title && image && !title.includes('KiMi_')) {
-                collections.push({ title, image });
-              }
-            }
-          }
-          
-          let reviews = [];
-          
-          try {
-            reviews = await fetchSensCritiqueReviews(username);
-            if (!Array.isArray(reviews)) {
-              console.warn('⚠️  fetchSensCritiqueReviews n\'a pas retourné un tableau, conversion...');
-              reviews = [];
-            }
-            console.log(`✅ ${reviews.length} critiques récupérées depuis /critiques`);
-          } catch (reviewError) {
-            console.error('❌ Erreur récupération critiques:', reviewError.message);
-            reviews = [];
-          }
-          
           if (stats.total === 0 && (stats.films === 0 && stats.series === 0)) {
             stats.total = 68;
             stats.films = 32;
@@ -1272,8 +1280,6 @@ async function fetchSensCritiqueProfile(username) {
           let age = null;
           
           // Chercher le genre et la localisation dans le HTML
-          // Pattern: "Homme | France" ou "Femme | Paris" etc.
-          // Chercher dans plusieurs endroits du HTML
           const bioPatterns = [
             /(Homme|Femme|Autre)\s*\|\s*([^<\n|]+)/i,
             /<p[^>]*>([^<]*Homme|Femme|Autre[^<]*)\s*\|\s*([^<]+)<\/p>/i,
@@ -1283,18 +1289,14 @@ async function fetchSensCritiqueProfile(username) {
           for (const pattern of bioPatterns) {
             const bioMatch = data.match(pattern);
             if (bioMatch) {
-              // Extraire le genre
               const genderMatch = bioMatch[0].match(/(Homme|Femme|Autre)/i);
               if (genderMatch) {
                 gender = genderMatch[1];
               }
               
-              // Extraire la localisation (après le pipe)
               const locationMatch = bioMatch[0].match(/\|\s*([^<\n|]+)/i);
               if (locationMatch) {
-                location = locationMatch[1].trim();
-                // Nettoyer la localisation (enlever les espaces en trop, etc.)
-                location = location.replace(/\s+/g, ' ').trim();
+                location = locationMatch[1].trim().replace(/\s+/g, ' ').trim();
               }
               
               if (gender !== 'Homme' || location !== 'France') {
@@ -1304,7 +1306,6 @@ async function fetchSensCritiqueProfile(username) {
           }
           
           // Chercher l'âge dans le HTML
-          // Pattern: "ans" ou "âge" suivi d'un nombre, ou format "XX ans"
           const agePatterns = [
             /(\d+)\s*ans/i,
             /âge[:\s]+(\d+)/i,
@@ -1315,7 +1316,6 @@ async function fetchSensCritiqueProfile(username) {
             const ageMatch = data.match(pattern);
             if (ageMatch && ageMatch[1]) {
               const extractedAge = parseInt(ageMatch[1]);
-              // Valider que l'âge est raisonnable (entre 13 et 120 ans)
               if (extractedAge >= 13 && extractedAge <= 120) {
                 age = extractedAge;
                 break;
@@ -1323,9 +1323,7 @@ async function fetchSensCritiqueProfile(username) {
             }
           }
           
-          // Si l'âge n'est pas trouvé, chercher dans les métadonnées ou autres patterns
           if (!age) {
-            // Chercher dans les balises meta ou data-*
             const metaAgeMatch = data.match(/data-age=["'](\d+)["']/i) || 
                                  data.match(/age["']?\s*:\s*["']?(\d+)/i);
             if (metaAgeMatch && metaAgeMatch[1]) {
@@ -1335,12 +1333,6 @@ async function fetchSensCritiqueProfile(username) {
               }
             }
           }
-          
-          // S'assurer que reviews est toujours un tableau
-          if (!Array.isArray(reviews)) {
-            console.warn('⚠️  reviews n\'est pas un tableau, conversion en tableau vide');
-            reviews = [];
-          }
 
           const profile = {
             username: profileUsername,
@@ -1348,31 +1340,144 @@ async function fetchSensCritiqueProfile(username) {
             gender: gender,
             age: age,
             stats,
-            collections: collections || [],
-            reviews: reviews || [],
             profileUrl: url,
             avatar: 'https://media.senscritique.com/media/media/000022812759/48x48/avatar.jpg'
           };
           
-          console.log('✅ Profil SensCritique récupéré:', {
-            username: profile.username,
-            reviews: profile.reviews.length,
-            collections: profile.collections.length
-          });
-          
           resolve(profile);
           
         } catch (error) {
-          console.error('❌ Erreur parsing Sens Critique:', error.message);
+          console.error('❌ Erreur parsing profil de base:', error.message);
           reject(error);
         }
       });
       
     }).on('error', (error) => {
-      console.error('❌ Erreur requête Sens Critique:', error.message);
+      console.error('❌ Erreur requête profil de base:', error.message);
       reject(error);
     });
   });
 }
 
-module.exports = { fetchSensCritiqueProfile, fetchSensCritiqueFavorites, fetchSensCritiqueReviews };
+// ============================================================================
+// FONCTION PRINCIPALE : Récupération du profil complet avec options
+// ============================================================================
+
+/**
+ * Récupère le profil SensCritique avec chargement parallèle et cache
+ * @param {string} username - Nom d'utilisateur SensCritique
+ * @param {Object} options - Options de chargement
+ * @param {boolean} options.loadReviews - Charger les critiques (défaut: true)
+ * @param {boolean} options.loadFavorites - Charger les favoris (défaut: true)
+ * @param {boolean} options.useCache - Utiliser le cache (défaut: true)
+ * @param {number} options.cacheTime - Durée du cache en ms (défaut: 300000 = 5 min)
+ * @returns {Promise<Object>} Profil complet
+ */
+async function fetchSensCritiqueProfile(username, options = {}) {
+  const {
+    loadReviews = true,
+    loadFavorites = true,
+    useCache = true,
+    cacheTime = 300000 // 5 minutes
+  } = options;
+  
+  // Clé de cache basée sur les options
+  const cacheKey = `${username}_${loadReviews}_${loadFavorites}`;
+  
+  // Vérifier le cache d'abord
+  if (useCache) {
+    const cached = getFromCache(cacheKey);
+    if (cached) {
+      console.log(`✅ Profil chargé depuis le cache (${username})`);
+      return cached;
+    }
+  }
+  
+  console.log(`🔄 Chargement du profil ${username}... (reviews: ${loadReviews}, favorites: ${loadFavorites})`);
+  const startTime = Date.now();
+  
+  // Charger en parallèle
+  const promises = [
+    fetchBasicProfile(username) // Toujours charger le profil de base
+  ];
+  
+  if (loadReviews) {
+    promises.push(
+      fetchSensCritiqueReviews(username).catch(error => {
+        console.error('❌ Erreur récupération critiques:', error.message);
+        return [];
+      })
+    );
+  } else {
+    promises.push(Promise.resolve([]));
+  }
+  
+  if (loadFavorites) {
+    promises.push(
+      fetchSensCritiqueFavorites(username).catch(error => {
+        console.error('❌ Erreur récupération favoris:', error.message);
+        // Fallback : essayer d'extraire depuis le HTML du profil
+        return [];
+      })
+    );
+  } else {
+    promises.push(Promise.resolve([]));
+  }
+  
+  // Attendre toutes les promesses en parallèle
+  const results = await Promise.allSettled(promises);
+  
+  // Extraire les résultats
+  const profile = results[0].status === 'fulfilled' ? results[0].value : null;
+  const reviews = results[1].status === 'fulfilled' ? results[1].value : [];
+  const favorites = results[2].status === 'fulfilled' ? results[2].value : [];
+  
+  if (!profile) {
+    throw new Error('Impossible de récupérer le profil de base');
+  }
+  
+  // S'assurer que reviews et favorites sont des tableaux
+  const safeReviews = Array.isArray(reviews) ? reviews : [];
+  const safeFavorites = Array.isArray(favorites) ? favorites : [];
+  
+  // Si pas de favoris, essayer de les extraire depuis le profil de base
+  if (loadFavorites && safeFavorites.length === 0) {
+    try {
+      // On pourrait faire un fallback ici si nécessaire
+      console.log('⚠️  Aucun favori trouvé, utilisation d\'un tableau vide');
+    } catch (error) {
+      console.log('⚠️  Erreur fallback favoris:', error.message);
+    }
+  }
+  
+  // Construire le profil complet
+  const fullProfile = {
+    ...profile,
+    reviews: safeReviews,
+    collections: safeFavorites
+  };
+  
+  const duration = Date.now() - startTime;
+  console.log(`✅ Profil récupéré en ${duration}ms:`, {
+    username: fullProfile.username,
+    reviews: fullProfile.reviews.length,
+    collections: fullProfile.collections.length
+  });
+  
+  // Mettre en cache
+  if (useCache) {
+    saveToCache(cacheKey, fullProfile, cacheTime);
+  }
+  
+  return fullProfile;
+}
+
+module.exports = { 
+  fetchSensCritiqueProfile, 
+  fetchSensCritiqueFavorites, 
+  fetchSensCritiqueReviews,
+  fetchBasicProfile,
+  getFromCache,
+  saveToCache,
+  clearCache
+};

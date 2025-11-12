@@ -177,12 +177,13 @@ function applyDiscordPresence(data) {
 
 function renderVoiceActivity(voiceState) {
   const { activity, streaming } = state.elements.discord;
-  const { channelName, guildIcon, guildId, streaming: isStreaming, video, selfMute, selfDeaf } = voiceState;
+  const { channelName, guildIcon, guildId, serverName, streaming: isStreaming, video, selfMute, selfDeaf } = voiceState;
 
   let voiceContent = '';
   if (guildIcon && guildId) {
     const iconUrl = `https://cdn.discordapp.com/icons/${guildId}/${guildIcon}.png?size=32`;
-    voiceContent = `<img src="${iconUrl}" class="guild-icon-hover" alt="Serveur"> En vocal dans ${channelName}`;
+    const serverTitle = serverName ? `title="${serverName}"` : '';
+    voiceContent = `<img src="${iconUrl}" class="guild-icon-hover" alt="Serveur" ${serverTitle}> En vocal dans ${channelName}`;
   } else {
     voiceContent = `🎤 En vocal dans ${channelName}`;
   }

@@ -1280,7 +1280,7 @@ async function fetchSensCritiqueReviews(username) {
       console.log(`📊 [Scraper] ${reviews.length} critiques brutes extraites`);
       
       // Nettoyer chaque critique avec cleanHTMLStrict
-      reviews = reviews.map(review => {
+      let cleanedReviews = reviews.map(review => {
         return {
           ...review,
           title: cleanHTMLStrict(review.title || ''),
@@ -1293,7 +1293,7 @@ async function fetchSensCritiqueReviews(username) {
       });
       
       // Filtrer les critiques invalides
-      reviews = reviews.filter(review => {
+      let filteredReviews = cleanedReviews.filter(review => {
         // Exclure si le titre ou contenu contient encore du HTML
         if (review.content.includes('<') || 
             review.content.includes('class=') || 
@@ -1322,15 +1322,15 @@ async function fetchSensCritiqueReviews(username) {
       
       // Dédupliquer par titre
       const uniqueReviews = new Map();
-      reviews.forEach(review => {
+      filteredReviews.forEach(review => {
         if (!uniqueReviews.has(review.title)) {
           uniqueReviews.set(review.title, review);
         }
       });
-      reviews = Array.from(uniqueReviews.values());
+      let finalReviews = Array.from(uniqueReviews.values());
       
       // Trier les critiques par date (les plus récentes en premier) - APRÈS nettoyage et déduplication
-      reviews.sort((a, b) => {
+      finalReviews.sort((a, b) => {
         const dateA = a.created_at || a.updated_at || '';
         const dateB = b.created_at || b.updated_at || '';
         if (dateA && dateB) {
@@ -1342,17 +1342,17 @@ async function fetchSensCritiqueReviews(username) {
         return 0;
       });
       
-      console.log(`✅ [Scraper] ${reviews.length} critiques propres après nettoyage et déduplication`);
+      console.log(`✅ [Scraper] ${finalReviews.length} critiques propres après nettoyage et déduplication`);
       
       // Log des 3 premières critiques pour vérification
-      if (reviews.length > 0) {
+      if (finalReviews.length > 0) {
         console.log(`📊 [Scraper] Exemples de critiques propres :`);
-        reviews.slice(0, 3).forEach((r, i) => {
+        finalReviews.slice(0, 3).forEach((r, i) => {
           console.log(`  ${i+1}. "${r.title}" (${r.content.substring(0, 50)}...)`);
         });
       }
       
-      resolve(reviews);
+      resolve(finalReviews);
     } catch (error) {
       console.error('❌ [Scraper] Erreur Puppeteer:', error.message);
       console.error('📍 [Scraper] Stack:', error.stack);

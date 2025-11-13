@@ -679,27 +679,41 @@ async function fetchSensCritiqueData() {
     sc.reviewsContainer.innerHTML = '<div class="sc-loading">Chargement des critiques...</div>';
   }
   
-  // Vérifier le cache
+  // Vérifier le cache localStorage d'abord
+  if (window.CacheManager) {
+    const cachedData = window.CacheManager.get('senscritique_data');
+    if (cachedData) {
+      // Initialiser la pagination depuis le cache
+      CONFIG.currentPage = 1;
+      CONFIG.totalPages = Math.ceil((cachedData.reviews || []).length / CONFIG.reviewsPerPage);
+      
+      // Afficher la première page depuis le cache
+      const firstPageReviews = (cachedData.reviews || []).slice(0, CONFIG.reviewsPerPage);
+      updateUIWithSCData({ ...cachedData, reviews: firstPageReviews });
+      
+      // Stocker toutes les reviews pour la pagination
+      CONFIG.allReviews = cachedData.reviews || [];
+      return; // Pas besoin d'appel API
+    }
+  }
+
+  // Vérifier le cache mémoire (fallback)
   if (isCacheValid(state.cache.lastScFetch, CONFIG.cacheDurations.sensCritique) && state.cache.sensCritique) {
     updateUIWithSCData(state.cache.sensCritique);
     return;
   }
 
   try {
-    // Récupérer la première page avec pagination
-    const response = await fetch(`${CONFIG.backendUrl}/senscritique?limit=${CONFIG.reviewsPerPage}&offset=0`);
+    console.log('🔄 [SensCritique] Récupération depuis le backend...');
+    
+    // Récupérer TOUTES les critiques (sans limite) pour les mettre en cache
+    const response = await fetch(`${CONFIG.backendUrl}/senscritique`);
     
     if (!response.ok) {
       throw new Error(`Backend non disponible: ${response.status}`);
     }
 
     const data = await response.json();
-    
-    // Initialiser la pagination
-    if (data.pagination) {
-      CONFIG.currentPage = data.pagination.page || 1;
-      CONFIG.totalPages = data.pagination.totalPages || 1;
-    }
     
     if (!data) {
       throw new Error('Données vides reçues du backend');
@@ -712,9 +726,17 @@ async function fetchSensCritiqueData() {
       hasReviews: Array.isArray(data.reviews) && data.reviews.length > 0
     });
 
-    // Mettre en cache
+    // Sauvegarder TOUTES les critiques dans le cache localStorage
+    if (window.CacheManager && data.reviews) {
+      window.CacheManager.set('senscritique_data', data);
+    }
+
+    // Mettre aussi en cache mémoire
     state.cache.sensCritique = data;
     state.cache.lastScFetch = Date.now();
+
+    // Stocker toutes les reviews pour la pagination
+    CONFIG.allReviews = data.reviews || [];
 
     // Gérer les erreurs avec fallback
     if (data.error && data.fallback) {
@@ -722,8 +744,13 @@ async function fetchSensCritiqueData() {
       return;
     }
 
-    // Mettre à jour l'UI
-    updateUIWithSCData(data);
+    // Initialiser la pagination
+    CONFIG.currentPage = 1;
+    CONFIG.totalPages = Math.ceil((data.reviews || []).length / CONFIG.reviewsPerPage);
+    
+    // Afficher seulement la première page
+    const firstPageReviews = (data.reviews || []).slice(0, CONFIG.reviewsPerPage);
+    updateUIWithSCData({ ...data, reviews: firstPageReviews });
     
   } catch (error) {
     console.error('❌ Erreur lors de la récupération Sens Critique:', error);
@@ -907,7 +934,7 @@ function addLoadMoreButton(container) {
 }
 
 /**
- * Charge plus de critiques via pagination
+ * Charge plus de critiques via pagination (depuis le cache localStorage)
  */
 async function loadMoreReviews() {
   const button = document.querySelector('.sc-load-more-button');
@@ -917,23 +944,45 @@ async function loadMoreReviews() {
   }
   
   try {
-    CONFIG.currentPage++;
-    const offset = (CONFIG.currentPage - 1) * CONFIG.reviewsPerPage;
+    // Récupérer TOUTES les critiques depuis le cache
+    const cachedData = getCachedData('senscritique_data');
     
-    const response = await fetch(`${CONFIG.backendUrl}/senscritique?limit=${CONFIG.reviewsPerPage}&offset=${offset}`);
-    
-    if (!response.ok) {
-      throw new Error(`Erreur ${response.status}`);
+    if (cachedData && cachedData.reviews) {
+      CONFIG.currentPage++;
+      const offset = (CONFIG.currentPage - 1) * CONFIG.reviewsPerPage;
+      
+      // Extraire la page suivante depuis le cache
+      const nextPageReviews = cachedData.reviews.slice(offset, offset + CONFIG.reviewsPerPage);
+      
+      if (nextPageReviews.length > 0) {
+        // Ajouter les nouvelles critiques
+        displayRecentReviews(nextPageReviews, true);
+      } else {
+        console.log('ℹ️  [SensCritique] Aucune critique supplémentaire dans le cache');
+        if (button) {
+          button.remove(); // Supprimer le bouton si plus de critiques
+        }
+      }
+    } else {
+      // Si pas de cache, faire un appel API classique (fallback)
+      console.log('⚠️  [SensCritique] Pas de cache, appel API...');
+      const offset = (CONFIG.currentPage - 1) * CONFIG.reviewsPerPage;
+      
+      const response = await fetch(`${CONFIG.backendUrl}/senscritique?limit=${CONFIG.reviewsPerPage}&offset=${offset}`);
+      
+      if (!response.ok) {
+        throw new Error(`Erreur ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.pagination) {
+        CONFIG.totalPages = data.pagination.totalPages;
+      }
+      
+      // Ajouter les nouvelles critiques
+      displayRecentReviews(data.reviews || [], true);
     }
-    
-    const data = await response.json();
-    
-    if (data.pagination) {
-      CONFIG.totalPages = data.pagination.totalPages;
-    }
-    
-    // Ajouter les nouvelles critiques
-    displayRecentReviews(data.reviews || [], true);
     
   } catch (error) {
     console.error('❌ Erreur chargement critiques supplémentaires:', error);

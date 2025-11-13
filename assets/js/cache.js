@@ -8,6 +8,7 @@ const CacheManager = {
   CACHE_DURATIONS: {
     discord_data: 10 * 60 * 1000,      // 10 minutes
     github_data: 10 * 60 * 1000,       // 10 minutes
+    github_projects: 24 * 60 * 60 * 1000, // 1 jour
     senscritique_data: 60 * 60 * 1000  // 1 heure
   },
   
@@ -92,7 +93,7 @@ const CacheManager = {
    * Affiche les statistiques du cache
    */
   getStats() {
-    const keys = ['discord_data', 'github_data', 'senscritique_data'];
+    const keys = ['discord_data', 'github_data', 'github_projects', 'senscritique_data'];
     const stats = {};
     
     keys.forEach(key => {

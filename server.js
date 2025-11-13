@@ -337,7 +337,7 @@ app.get('/github', async (req, res) => {
         console.warn('⚠️  Erreur récupération user GitHub:', err.message);
         return null;
       }),
-      httpsRequest(`https://api.github.com/users/${GITHUB_USERNAME}/repos?sort=updated&per_page=10`).catch(err => {
+      httpsRequest(`https://api.github.com/users/${GITHUB_USERNAME}/repos?sort=updated&per_page=100&type=all`).catch(err => {
         console.warn('⚠️  Erreur récupération repos GitHub:', err.message);
         return [];
       }),
@@ -351,9 +351,26 @@ app.get('/github', async (req, res) => {
       throw new Error('Impossible de récupérer les données utilisateur GitHub');
     }
     
+    // Formater les repos pour le frontend
+    const formattedRepos = (repos || []).map(repo => ({
+      id: repo.id,
+      name: repo.name,
+      full_name: repo.full_name,
+      description: repo.description || 'Pas de description',
+      html_url: repo.html_url,
+      language: repo.language,
+      stargazers_count: repo.stargazers_count || 0,
+      forks_count: repo.forks_count || 0,
+      updated_at: repo.updated_at,
+      created_at: repo.created_at,
+      private: repo.private,
+      default_branch: repo.default_branch
+    }));
+    
     const githubData = {
+      username: user.login,
       user,
-      repos: repos || [],
+      repos: formattedRepos,
       events: events || []
     };
     
@@ -362,7 +379,7 @@ app.get('/github', async (req, res) => {
     
     console.log('✅ Données GitHub récupérées:', {
       username: user.login,
-      repos: repos?.length || 0,
+      repos: formattedRepos.length,
       events: events?.length || 0
     });
     

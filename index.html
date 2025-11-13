@@ -49,10 +49,6 @@
       
       <!-- Section Sens Critique -->
       <section id="senscritique" class="section" aria-labelledby="senscritique-heading">
-        <div class="senscritique-titles">
-          <h2 id="senscritique-heading">Sens-Critique</h2>
-          <a href="https://www.senscritique.com/KiMi_/critiques" target="_blank" rel="noopener noreferrer" class="sc-reviews-section-title">Critiques Récentes</a>
-        </div>
         <div class="senscritique-container">
           <div class="sc-profile-card">
             <div class="sc-header">
@@ -102,7 +98,6 @@
           
           <!-- Section Critiques Récentes -->
           <div class="sc-recent-reviews">
-            <h3 class="sc-reviews-title">Critiques Récentes</h3>
             <div id="sc-reviews-container" class="sc-reviews-container">
               <div class="sc-loading">Chargement des critiques...</div>
             </div>
@@ -112,59 +107,18 @@
       
       <!-- CONTENEUR POUR ALIGNER PROJETS ET ACTIVITÉ GITHUB -->
       <div class="projects-activity-titles">
-        <h2 id="projects-heading">Projets Github</h2>
+        <div class="projects-heading-wrapper">
+          <h2 id="projects-heading">Projets Github</h2>
+          <div class="projects-heading-underline"></div>
+        </div>
         <h2 id="github-activity-heading" class="github-activity-section-title">Activité GitHub</h2>
       </div>
       <div class="projects-activity-container">
         <section id="projects" class="section" aria-labelledby="projects-heading">
           <ul class="project-cards">
+            <!-- Les projets seront chargés dynamiquement depuis l'API GitHub -->
             <li>
-              <a class="project-card" href="https://github.com/UndKiMi/5Ghz_Cleaner" target="_blank">
-                <span class="pc-icon">🛠️</span>
-                <div class="pc-content">
-                  <div class="pc-title">
-                    <span class="pc-name">5Ghz_Cleaner</span>
-                    <span class="pc-badge">Public</span>
-                  </div>
-                  <div class="pc-desc">Optimisez et nettoyez votre installation Windows 11</div>
-                  <div class="pc-meta">
-                    <span class="pc-lang"><span class="pc-dot pc-blue"></span>Python</span>
-                    <span class="pc-stars">⭐ 5</span>
-                  </div>
-                </div>
-              </a>
-            </li>
-            <li>
-              <a class="project-card" href="https://github.com/UndKiMi/Medal-Bot" target="_blank">
-                <span class="pc-icon">🧑‍💻</span>
-                <div class="pc-content">
-                  <div class="pc-title">
-                    <span class="pc-name">Medal-Bot</span>
-                    <span class="pc-badge">Public</span>
-                  </div>
-                  <div class="pc-desc">Made with ❤️ for McDonald's employees 🍔 Bon appétit ! 🍟</div>
-                  <div class="pc-meta">
-                    <span class="pc-lang"><span class="pc-dot pc-blue"></span>Python</span>
-                    <span class="pc-stars">⭐ 1</span>
-                  </div>
-                </div>
-              </a>
-            </li>
-            <li>
-              <a class="project-card" href="https://github.com/UndKiMi/K.Ring" target="_blank">
-                <span class="pc-icon">🤖</span>
-                <div class="pc-content">
-                  <div class="pc-title">
-                    <span class="pc-name">K.Ring</span>
-                    <span class="pc-badge">Public</span>
-                  </div>
-                  <div class="pc-desc">Bot Discord privé multifonctions</div>
-                  <div class="pc-meta">
-                    <span class="pc-lang"><span class="pc-dot pc-yellow"></span>JavaScript</span>
-                    <span class="pc-stars">⭐ 1</span>
-                  </div>
-                </div>
-              </a>
+              <div class="project-loading">Chargement des projets...</div>
             </li>
           </ul>
         </section>

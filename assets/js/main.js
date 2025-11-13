@@ -6,7 +6,8 @@ const CONFIG = {
   cacheDurations: {
     github: 10 * 60 * 1000,
     discord: 200,
-    sensCritique: 60 * 60 * 1000 // 1 heure - optimisé pour performance
+    sensCritique: 60 * 60 * 1000, // 1 heure - optimisé pour performance
+    githubProjects: 24 * 60 * 60 * 1000 // 1 jour
   },
   // Configuration pagination
   reviewsPerPage: 5,
@@ -301,12 +302,26 @@ function displayDiscordBadges(user) {
 }
 
 async function fetchGitHubStats() {
+  // Vérifier le cache localStorage d'abord
+  if (window.CacheManager) {
+    const cachedData = window.CacheManager.get('github_data');
+    if (cachedData) {
+      updateUIWithGitHubData(cachedData);
+      // Charger aussi les projets depuis le cache
+      loadGitHubProjects(cachedData.repos);
+      return; // Pas besoin d'appel API
+    }
+  }
+
+  // Vérifier le cache mémoire (fallback)
   if (isCacheValid(state.cache.lastGithubFetch, CONFIG.cacheDurations.github) && state.cache.github) {
     updateUIWithGitHubData(state.cache.github);
+    loadGitHubProjects(state.cache.github.repos);
     return;
   }
 
   try {
+    console.log('🔄 [GitHub] Récupération depuis le backend...');
     // Utiliser le backend pour éviter les erreurs CORS et 403
     const response = await fetch(`${CONFIG.backendUrl}/github`);
     
@@ -320,10 +335,19 @@ async function fetchGitHubStats() {
       throw new Error(data.message || data.error);
     }
 
+    // Sauvegarder dans le cache localStorage
+    if (window.CacheManager) {
+      window.CacheManager.set('github_data', data);
+    }
+
+    // Sauvegarder aussi dans le cache mémoire
     state.cache.github = data;
     state.cache.lastGithubFetch = Date.now();
 
-    updateUIWithGitHubData(state.cache.github);
+    updateUIWithGitHubData(data);
+    
+    // Charger les projets GitHub
+    loadGitHubProjects(data.repos);
   } catch (error) {
     console.error('❌ Erreur GitHub:', error);
     // Utiliser les données de fallback seulement si on n'a pas de cache
@@ -332,6 +356,7 @@ async function fetchGitHubStats() {
     } else {
       // Utiliser le cache existant si disponible
       updateUIWithGitHubData(state.cache.github);
+      loadGitHubProjects(state.cache.github.repos);
     }
   }
 }
@@ -370,6 +395,181 @@ function updateUIWithGitHubData(data) {
   github.streak.textContent = streak;
 
   generateActivityTable(events, repos);
+  
+  // Charger et afficher les projets GitHub
+  loadGitHubProjects(repos);
+}
+
+/**
+ * Charge et affiche les projets GitHub dynamiquement
+ */
+async function loadGitHubProjects(repos = null) {
+  try {
+    // Vérifier le cache localStorage d'abord
+    if (window.CacheManager) {
+      const cachedProjects = window.CacheManager.get('github_projects');
+      if (cachedProjects) {
+        renderProjects(cachedProjects);
+        return; // Pas besoin d'appel API
+      }
+    }
+    
+    // Si repos fournis depuis fetchGitHubStats, les utiliser
+    if (repos && Array.isArray(repos) && repos.length > 0) {
+      // Sauvegarder dans le cache
+      if (window.CacheManager) {
+        window.CacheManager.set('github_projects', repos);
+      }
+      renderProjects(repos);
+      return;
+    }
+    
+    // Sinon, récupérer depuis le backend
+    console.log('🔄 [Projects] Récupération depuis le backend...');
+    const response = await fetch(`${CONFIG.backendUrl}/github`);
+    
+    if (!response.ok) {
+      throw new Error(`Backend non disponible: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    if (data.repos && Array.isArray(data.repos)) {
+      // Sauvegarder dans le cache
+      if (window.CacheManager) {
+        window.CacheManager.set('github_projects', data.repos);
+      }
+      renderProjects(data.repos);
+    }
+  } catch (error) {
+    console.error('❌ Erreur chargement projets GitHub:', error);
+  }
+}
+
+/**
+ * Affiche les projets GitHub dans le DOM
+ */
+function renderProjects(repos) {
+  const projectsContainer = document.querySelector('.project-cards');
+  if (!projectsContainer) {
+    console.warn('⚠️  Conteneur projets non trouvé');
+    return;
+  }
+  
+  // Filtrer seulement les repos publics et les trier par date de mise à jour
+  const publicRepos = repos
+    .filter(repo => !repo.private)
+    .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
+    .slice(0, 10); // Limiter à 10 projets
+  
+  if (publicRepos.length === 0) {
+    console.log('ℹ️  Aucun projet public trouvé');
+    return;
+  }
+  
+  // Vider le conteneur
+  projectsContainer.innerHTML = '';
+  
+  // Créer les cartes de projets
+  publicRepos.forEach(repo => {
+    const li = document.createElement('li');
+    const card = document.createElement('a');
+    card.className = 'project-card';
+    card.href = repo.html_url;
+    card.target = '_blank';
+    card.rel = 'noopener noreferrer';
+    
+    // Icône selon le langage
+    const icon = getProjectIcon(repo.language);
+    
+    // Badge Public/Private
+    const badge = repo.private ? 'Private' : 'Public';
+    
+    // Description (limiter à 80 caractères)
+    const description = repo.description 
+      ? (repo.description.length > 80 ? repo.description.substring(0, 80) + '...' : repo.description)
+      : 'Pas de description';
+    
+    // Couleur du langage
+    const langColor = getLanguageColor(repo.language);
+    
+    card.innerHTML = `
+      <span class="pc-icon">${icon}</span>
+      <div class="pc-content">
+        <div class="pc-title">
+          <span class="pc-name">${escapeHtml(repo.name)}</span>
+          <span class="pc-badge">${badge}</span>
+        </div>
+        <div class="pc-desc">${escapeHtml(description)}</div>
+        <div class="pc-meta">
+          ${repo.language ? `<span class="pc-lang"><span class="pc-dot" style="background-color: ${langColor}"></span>${escapeHtml(repo.language)}</span>` : ''}
+          <span class="pc-stars">⭐ ${repo.stargazers_count || 0}</span>
+        </div>
+      </div>
+    `;
+    
+    li.appendChild(card);
+    projectsContainer.appendChild(li);
+  });
+  
+  console.log(`✅ ${publicRepos.length} projets GitHub affichés`);
+}
+
+/**
+ * Retourne une icône selon le langage du projet
+ */
+function getProjectIcon(language) {
+  const icons = {
+    'Python': '🐍',
+    'JavaScript': '🤖',
+    'TypeScript': '📘',
+    'Java': '☕',
+    'C++': '⚙️',
+    'C': '⚙️',
+    'C#': '🎮',
+    'Go': '🐹',
+    'Rust': '🦀',
+    'PHP': '🐘',
+    'Ruby': '💎',
+    'Swift': '🐦',
+    'Kotlin': '🔷',
+    'HTML': '🌐',
+    'CSS': '🎨',
+    'Shell': '💻',
+    'Dockerfile': '🐳',
+    'Vue': '💚',
+    'React': '⚛️'
+  };
+  
+  return icons[language] || '💻';
+}
+
+/**
+ * Retourne une couleur selon le langage
+ */
+function getLanguageColor(language) {
+  const colors = {
+    'Python': '#3776ab',
+    'JavaScript': '#f7df1e',
+    'TypeScript': '#3178c6',
+    'Java': '#ed8b00',
+    'C++': '#00599c',
+    'C': '#a8b9cc',
+    'C#': '#239120',
+    'Go': '#00add8',
+    'Rust': '#000000',
+    'PHP': '#777bb4',
+    'Ruby': '#cc342d',
+    'Swift': '#fa7343',
+    'Kotlin': '#7f52ff',
+    'HTML': '#e34c26',
+    'CSS': '#1572b6',
+    'Shell': '#89e051',
+    'Vue': '#4fc08d',
+    'React': '#61dafb'
+  };
+  
+  return colors[language] || '#6e7681';
 }
 
 function calculateStreak(events = []) {
@@ -1257,7 +1457,7 @@ function setupFavoritesSlider() {
   nextBtn.replaceWith(newNextBtn);
 
   let currentPosition = 0;
-  const scrollAmount = 280;
+  const scrollAmount = 220; // Réduit pour correspondre à la nouvelle taille des items
 
   const updateTransform = () => {
     grid.style.transform = `translateX(${currentPosition}px)`;

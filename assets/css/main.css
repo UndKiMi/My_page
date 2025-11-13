@@ -465,6 +465,13 @@ header h1::after {
   margin: 0;
 }
 
+.project-loading {
+  text-align: center;
+  color: var(--text-dim);
+  padding: 40px 20px;
+  font-size: 0.9rem;
+}
+
 .project-card {
   display: flex;
   align-items: center;
@@ -1062,6 +1069,25 @@ header h1::after {
   width: 60px;
 }
 
+/* Soulignement pour "Projets Github" */
+.projects-heading-wrapper {
+  display: inline-block;
+  position: relative;
+}
+
+.projects-heading-underline {
+  width: 40px;
+  height: 3px;
+  background: linear-gradient(90deg, var(--primary) 0%, var(--primary-light) 100%);
+  border-radius: 2px;
+  margin-top: 5px;
+  transition: width 0.3s;
+}
+
+.projects-heading-wrapper:hover .projects-heading-underline {
+  width: 60px;
+}
+
 .sc-favorites-wrapper {
   position: relative;
   overflow: hidden;
@@ -1071,12 +1097,12 @@ header h1::after {
 
 .sc-favorites-grid {
   display: flex;
-  gap: 15px;
+  gap: 12px;
   overflow: visible;
   scroll-snap-type: x mandatory;
   scrollbar-width: none;
   -ms-overflow-style: none;
-  padding: 8px 0;
+  padding: 8px 0 20px 0;
   position: relative;
   transition: transform 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   will-change: transform;
@@ -1129,23 +1155,27 @@ header h1::after {
   cursor: pointer;
   transition: var(--transition);
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   flex-shrink: 0;
-  width: 120px;
+  width: 90px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
 }
 
 .sc-favorite-item:hover {
-  transform: translateY(-5px) scale(1.05);
+  transform: translateY(-3px);
 }
 
 .sc-favorite-poster {
-  width: 118px;
-  height: 178px;
-  border-radius: 8px;
+  width: 85px;
+  height: 128px;
+  border-radius: 6px;
   object-fit: cover;
   transition: var(--transition);
   border: 2px solid transparent;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
   display: block;
 }
 
@@ -1154,15 +1184,20 @@ header h1::after {
 }
 
 .sc-favorite-title {
-  margin-top: 8px;
   font-size: 0.7rem;
   color: var(--text);
   text-align: center;
+  margin-top: 0;
+  line-height: 1.3;
+  max-width: 90px;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-word;
   font-weight: 500;
-  width: 120px;
+  min-height: 2.6em;
 }
 
 ::-webkit-scrollbar {
@@ -1294,16 +1329,16 @@ header h1::after {
   }
 
   .sc-favorite-item {
-    width: 100px;
+    width: 80px;
   }
 
   .sc-favorite-poster {
-    width: 98px;
-    height: 148px;
+    width: 75px;
+    height: 113px;
   }
 
   .sc-favorite-title {
-    width: 100px;
+    max-width: 80px;
     font-size: 0.65rem;
   }
 }
@@ -1368,16 +1403,16 @@ header h1::after {
   }
 
   .sc-favorite-item {
-    width: 90px;
+    width: 75px;
   }
 
   .sc-favorite-poster {
-    width: 88px;
-    height: 133px;
+    width: 70px;
+    height: 105px;
   }
 
   .sc-favorite-title {
-    width: 90px;
+    max-width: 75px;
     font-size: 0.6rem;
   }
 
@@ -1415,16 +1450,16 @@ header h1::after {
   }
 
   .sc-favorite-item {
-    width: 80px;
+    width: 70px;
   }
 
   .sc-favorite-poster {
-    width: 78px;
-    height: 118px;
+    width: 65px;
+    height: 98px;
   }
 
   .sc-favorite-title {
-    width: 80px;
+    max-width: 70px;
     font-size: 0.55rem;
   }
 

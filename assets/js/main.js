@@ -131,7 +131,19 @@ async function updateDiscordPresence() {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
     const data = await response.json();
-    if (!data.user) throw new Error('Utilisateur non trouvé');
+    
+    // Si le bot n'est pas prêt ou si l'utilisateur n'est pas trouvé
+    if (!data.botReady || !data.user) {
+      const { discord } = state.elements;
+      discord.username.textContent = 'KiMi';
+      discord.status.className = 'status-dot offline';
+      discord.statusText.textContent = data.message || 'Bot en cours de connexion...';
+      discord.activity.textContent = data.message || 'En attente de connexion Discord...';
+      discord.activity.classList.remove('voice');
+      discord.streaming.classList.remove('is-visible');
+      state.cache.lastDiscordFetch = Date.now();
+      return;
+    }
 
     const payload = JSON.stringify(data);
     if (payload !== state.cache.lastDiscordData) {
@@ -142,12 +154,13 @@ async function updateDiscordPresence() {
 
     state.cache.lastDiscordFetch = Date.now();
   } catch (error) {
+    console.error('❌ Erreur Discord:', error);
     if (!state.cache.discord) {
       const { discord } = state.elements;
       discord.username.textContent = 'KiMi';
       discord.status.className = 'status-dot offline';
       discord.statusText.textContent = 'Serveur hors ligne';
-      discord.activity.textContent = 'Démarrez le serveur backend pour voir le statut Discord';
+      discord.activity.textContent = 'Impossible de se connecter au serveur backend';
       discord.activity.classList.remove('voice');
       discord.streaming.classList.remove('is-visible');
     }
@@ -350,6 +363,16 @@ async function fetchGitHubStats() {
     loadGitHubProjects(data.repos);
   } catch (error) {
     console.error('❌ Erreur GitHub:', error);
+    // Vérifier le cache localStorage en cas d'erreur
+    if (window.CacheManager) {
+      const cachedData = window.CacheManager.get('github_data');
+      if (cachedData) {
+        console.log('📦 Utilisation du cache localStorage après erreur');
+        updateUIWithGitHubData(cachedData);
+        loadGitHubProjects(cachedData.repos);
+        return;
+      }
+    }
     // Utiliser les données de fallback seulement si on n'a pas de cache
     if (!state.cache.github) {
       useFallbackGitHubData();

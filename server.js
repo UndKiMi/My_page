@@ -289,7 +289,43 @@ function updatePresenceCache(member, silent = false) {
 }
 
 app.get('/discord-status', (req, res) => {
-  res.json(cachedPresence);
+  try {
+    // Vérifier si le bot est connecté
+    if (!client.isReady()) {
+      return res.json({
+        user: null,
+        status: 'offline',
+        activities: [],
+        voiceState: null,
+        botReady: false,
+        message: 'Bot Discord en cours de connexion...'
+      });
+    }
+    
+    // Si cachedPresence n'a pas encore d'utilisateur, retourner un état par défaut
+    if (!cachedPresence || !cachedPresence.user) {
+      return res.json({
+        user: null,
+        status: 'offline',
+        activities: [],
+        voiceState: null,
+        botReady: true,
+        message: 'Utilisateur non trouvé ou bot en cours d\'initialisation'
+      });
+    }
+    
+    res.json({
+      ...cachedPresence,
+      botReady: true
+    });
+  } catch (error) {
+    console.error('❌ Erreur endpoint /discord-status:', error);
+    res.status(500).json({
+      error: 'Erreur serveur',
+      message: error.message,
+      botReady: client.isReady()
+    });
+  }
 });
 
 app.get('/health', (req, res) => {
@@ -405,6 +441,11 @@ app.get('/github', async (req, res) => {
     
   } catch (error) {
     console.error('❌ Erreur GitHub:', error.message);
+    // Si on a un cache, le retourner même en cas d'erreur
+    if (cachedGitHub) {
+      console.log('📦 Retour du cache GitHub en cas d\'erreur');
+      return res.json(cachedGitHub);
+    }
     res.status(500).json({
       error: 'Impossible de récupérer les données GitHub',
       message: error.message

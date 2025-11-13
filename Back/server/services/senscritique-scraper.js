@@ -65,9 +65,9 @@ function getFromCache(key) {
  * Sauvegarde les données dans le cache
  * @param {string} key - Clé du cache
  * @param {Object} data - Données à mettre en cache
- * @param {number} ttl - Durée de vie en millisecondes (défaut: 5 minutes)
+ * @param {number} ttl - Durée de vie en millisecondes (défaut: 5 jours)
  */
-function saveToCache(key, data, ttl = 300000) {
+function saveToCache(key, data, ttl = 432000000) {
   cache.set(key, {
     data,
     timestamp: Date.now(),
@@ -1616,7 +1616,7 @@ async function fetchBasicProfile(username) {
  * @param {boolean} options.loadReviews - Charger les critiques (défaut: true)
  * @param {boolean} options.loadFavorites - Charger les favoris (défaut: true)
  * @param {boolean} options.useCache - Utiliser le cache (défaut: true)
- * @param {number} options.cacheTime - Durée du cache en ms (défaut: 300000 = 5 min)
+ * @param {number} options.cacheTime - Durée du cache en ms (défaut: 432000000 = 5 jours)
  * @returns {Promise<Object>} Profil complet
  */
 async function fetchSensCritiqueProfile(username, options = {}) {
@@ -1624,7 +1624,7 @@ async function fetchSensCritiqueProfile(username, options = {}) {
     loadReviews = true,
     loadFavorites = true,
     useCache = true,
-    cacheTime = 300000 // 5 minutes
+    cacheTime = 432000000 // 5 jours
   } = options;
   
   // Clé de cache basée sur les options

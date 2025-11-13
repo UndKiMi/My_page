@@ -3,7 +3,7 @@ const router = express.Router();
 const { fetchSensCritiqueProfile } = require('../services/senscritique-scraper');
 const monitoring = require('../services/monitoring');
 
-const SC_CACHE_DURATION = 3600000; // 1 heure
+const SC_CACHE_DURATION = 432000000; // 5 jours
 let cachedSensCritique = null;
 let lastSCFetch = 0;
 

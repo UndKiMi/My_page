@@ -139,7 +139,11 @@ client.once('ready', async () => {
 
   for (const [guildId, guild] of client.guilds.cache) {
     try {
-      const member = await guild.members.fetch(TARGET_USER_ID).catch(() => null);
+      console.log(`🔍 Recherche dans le serveur: ${guild.name} (${guildId})`);
+      const member = await guild.members.fetch(TARGET_USER_ID).catch((err) => {
+        console.log(`⚠️  Erreur lors de la recherche dans ${guild.name}:`, err.message);
+        return null;
+      });
       if (member) {
         try {
           const fullUser = await client.users.fetch(TARGET_USER_ID, { force: true });
@@ -161,10 +165,22 @@ client.once('ready', async () => {
         targetGuild = guild;
         targetMember = member;
         break;
+      } else {
+        console.log(`⚠️  Utilisateur non trouvé dans ${guild.name}`);
       }
     } catch (err) {
-      console.log(`⚠️  Utilisateur non trouvé dans ${guild.name}`);
+      console.log(`❌ Erreur lors de la recherche dans ${guild.name}:`, err.message);
     }
+  }
+  
+  // Si l'utilisateur n'a pas été trouvé après la boucle
+  if (!targetMember) {
+    console.log(`\n⚠️  ATTENTION: Utilisateur ${TARGET_USER_ID} non trouvé dans aucun serveur!`);
+    console.log(`📋 Serveurs disponibles: ${Array.from(client.guilds.cache.keys()).join(', ')}`);
+    console.log(`💡 Vérifiez que:`);
+    console.log(`   1. L'utilisateur est membre d'au moins un serveur où le bot est présent`);
+    console.log(`   2. Le bot a les permissions nécessaires (voir les membres)`);
+    console.log(`   3. L'ID utilisateur est correct: ${TARGET_USER_ID}\n`);
   }
 
   setInterval(async () => {

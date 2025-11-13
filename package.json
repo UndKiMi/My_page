@@ -3,13 +3,13 @@
   "version": "3.0.0",
   "description": "Portfolio moderne avec intégrations Discord, GitHub et Sens Critique - Application React",
   "scripts": {
-    "front:build": "cd Front && pnpm build",
-    "front:start": "cd Front && pnpm start",
-    "front:dev": "cd Front && pnpm dev",
+    "front:build": "cd Front && npm run build",
+    "front:start": "cd Front && npm run start",
+    "front:dev": "cd Front && npm run dev",
 
-    "back:build": "cd Back && pnpm build",
-    "back:start": "cd Back && pnpm start",
-    "back:dev": "cd Back && pnpm dev"
+    "back:build": "cd Back && npm run build",
+    "back:start": "cd Back && npm run start",
+    "back:dev": "cd Back && npm run dev"
   },
   "keywords": [
     "portfolio",

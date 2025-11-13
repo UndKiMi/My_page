@@ -740,6 +740,45 @@ async function fetchSensCritiqueReviews(username) {
       // Optimisé : domcontentloaded au lieu de networkidle0, timeout réduit à 15s
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
       
+      // IMPORTANT : Accepter automatiquement les cookies pour débloquer le contenu
+      console.log('🍪 [Scraper] Recherche de la popup cookies...');
+      try {
+        // Chercher le bouton "Accepter & Fermer" ou "Continuer sans accepter"
+        const cookieButtonAccepted = await page.evaluate(() => {
+          // Essayer plusieurs sélecteurs pour le bouton cookies
+          const selectors = [
+            'button:has-text("Accepter")',
+            'button:has-text("Fermer")',
+            'button[class*="accept"]',
+            'button[class*="consent"]',
+            '[id*="accept"]',
+            '[id*="consent"]'
+          ];
+          
+          // Méthode simple : chercher tous les boutons et cliquer sur celui qui contient "Accepter" ou "Continuer"
+          const buttons = Array.from(document.querySelectorAll('button'));
+          const cookieButton = buttons.find(b => {
+            const text = b.textContent.toLowerCase();
+            return text.includes('accepter') || text.includes('continuer') || text.includes('fermer');
+          });
+          
+          if (cookieButton) {
+            cookieButton.click();
+            return true;
+          }
+          return false;
+        });
+        
+        if (cookieButtonAccepted) {
+          console.log('✅ [Scraper] Cookies acceptés automatiquement');
+          await new Promise(resolve => setTimeout(resolve, 1500)); // Attendre que la popup disparaisse
+        } else {
+          console.log('ℹ️  [Scraper] Pas de popup cookies détectée ou déjà fermée');
+        }
+      } catch (e) {
+        console.log('⚠️  [Scraper] Erreur lors de l\'acceptation des cookies:', e.message);
+      }
+      
       // Attendre que les critiques soient chargées (timeout réduit à 5s)
       try {
         await page.waitForSelector('article[data-testid="review-overview"], [data-testid*="review"], article', { timeout: 5000 });

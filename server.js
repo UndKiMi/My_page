@@ -8,6 +8,7 @@ const path = require('path');
 require('dotenv').config();
 
 const compression = require('compression');
+const monitoring = require('./monitoring');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -398,17 +399,59 @@ app.get('/senscritique/clear-cache', (req, res) => {
   res.json({ success: true, message: 'Cache SensCritique vidé' });
 });
 
+// Endpoint pour consulter les statistiques de monitoring
+app.get('/senscritique/stats', (req, res) => {
+  try {
+    const stats = monitoring.getStats();
+    res.json(stats);
+  } catch (error) {
+    res.status(500).json({ error: 'Erreur récupération stats', message: error.message });
+  }
+});
+
 app.get('/senscritique', async (req, res) => {
   try {
     const now = Date.now();
+    
+    // Paramètres de pagination et filtrage
+    const limit = parseInt(req.query.limit) || 50;
+    const offset = parseInt(req.query.offset) || 0;
+    const type = req.query.type; // 'film', 'serie', 'jeu'
     
     // Vérifier le cache d'abord (1 heure), sauf si force=true
     const forceRefresh = req.query.force === 'true';
     
     if (!forceRefresh && cachedSensCritique && (now - lastSCFetch) < SC_CACHE_DURATION) {
       console.log('📦 [SensCritique] Cache utilisé - pas de scraping');
+      
+      // Logger le hit de cache
+      monitoring.logCacheHit();
+      
       if (cachedSensCritique.reviews && Array.isArray(cachedSensCritique.reviews) && cachedSensCritique.reviews.length > 0) {
-        return res.json(cachedSensCritique);
+        // Appliquer pagination et filtrage
+        let reviews = cachedSensCritique.reviews;
+        
+        // Filtrer par type si demandé
+        if (type) {
+          reviews = reviews.filter(r => r.url && r.url.includes(`/${type}/`));
+        }
+        
+        // Paginer
+        const totalReviews = reviews.length;
+        const paginatedReviews = reviews.slice(offset, offset + limit);
+        
+        return res.json({
+          ...cachedSensCritique,
+          reviews: paginatedReviews,
+          pagination: {
+            total: totalReviews,
+            limit,
+            offset,
+            hasMore: (offset + limit) < totalReviews,
+            page: Math.floor(offset / limit) + 1,
+            totalPages: Math.ceil(totalReviews / limit)
+          }
+        });
       } else {
         console.log('⚠️  [SensCritique] Cache invalide, rechargement...');
       }
@@ -437,17 +480,47 @@ app.get('/senscritique', async (req, res) => {
       profile.reviews = [];
     }
     
-    console.log(`✅ [SensCritique] ${profile.reviews.length} critique(s) récupérée(s)`);
+    const reviewsCount = profile.reviews.length;
+    console.log(`✅ [SensCritique] ${reviewsCount} critique(s) récupérée(s)`);
+    
+    // Logger le scraping avec monitoring
+    monitoring.logScrapingCall(scrapingTime, reviewsCount);
     
     // Sauvegarder en cache
     cachedSensCritique = profile;
     lastSCFetch = now;
     
-    res.json(profile);
+    // Appliquer pagination et filtrage
+    let reviews = profile.reviews;
+    
+    // Filtrer par type si demandé
+    if (type) {
+      reviews = reviews.filter(r => r.url && r.url.includes(`/${type}/`));
+    }
+    
+    // Paginer
+    const totalReviews = reviews.length;
+    const paginatedReviews = reviews.slice(offset, offset + limit);
+    
+    res.json({
+      ...profile,
+      reviews: paginatedReviews,
+      pagination: {
+        total: totalReviews,
+        limit,
+        offset,
+        hasMore: (offset + limit) < totalReviews,
+        page: Math.floor(offset / limit) + 1,
+        totalPages: Math.ceil(totalReviews / limit)
+      }
+    });
     
   } catch (error) {
     console.error('❌ [SensCritique] Erreur scraping:', error.message);
     console.error('📍 [SensCritique] Stack:', error.stack);
+    
+    // Logger l'erreur
+    monitoring.logError(error, 'senscritique_endpoint');
     
     // Réponse avec fallback en cas d'erreur
     res.status(500).json({

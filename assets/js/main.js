@@ -7,7 +7,12 @@ const CONFIG = {
     github: 10 * 60 * 1000,
     discord: 200,
     sensCritique: 60 * 60 * 1000 // 1 heure - optimisé pour performance
-  }
+  },
+  // Configuration pagination
+  reviewsPerPage: 5,
+  currentPage: 1,
+  totalPages: 1,
+  allReviews: []
 };
 
 const URLS = {
@@ -681,13 +686,20 @@ async function fetchSensCritiqueData() {
   }
 
   try {
-    const response = await fetch(`${CONFIG.backendUrl}/senscritique`);
+    // Récupérer la première page avec pagination
+    const response = await fetch(`${CONFIG.backendUrl}/senscritique?limit=${CONFIG.reviewsPerPage}&offset=0`);
     
     if (!response.ok) {
       throw new Error(`Backend non disponible: ${response.status}`);
     }
 
     const data = await response.json();
+    
+    // Initialiser la pagination
+    if (data.pagination) {
+      CONFIG.currentPage = data.pagination.page || 1;
+      CONFIG.totalPages = data.pagination.totalPages || 1;
+    }
     
     if (!data) {
       throw new Error('Données vides reçues du backend');
@@ -754,7 +766,7 @@ function updateUIWithSCData(data) {
   displayRecentReviews(data.reviews || []);
 }
 
-function displayRecentReviews(reviews) {
+function displayRecentReviews(reviews, append = false) {
   const { sc } = state.elements;
   
   if (!sc || !sc.reviewsContainer) {
@@ -766,7 +778,9 @@ function displayRecentReviews(reviews) {
   
   // Vérifier que reviews est un tableau valide
   if (!Array.isArray(reviews) || reviews.length === 0) {
-    container.innerHTML = '<div class="sc-review-empty">Aucune critique disponible</div>';
+    if (!append) {
+      container.innerHTML = '<div class="sc-review-empty">Aucune critique disponible</div>';
+    }
     return;
   }
   
@@ -774,23 +788,49 @@ function displayRecentReviews(reviews) {
   const validReviews = reviews.filter(r => r && r.title && r.title.trim().length > 0);
   
   if (validReviews.length === 0) {
-    container.innerHTML = '<div class="sc-review-empty">Aucune critique disponible</div>';
+    if (!append) {
+      container.innerHTML = '<div class="sc-review-empty">Aucune critique disponible</div>';
+    }
     return;
   }
   
-  // Vider le conteneur
-  container.innerHTML = '';
+  // Vider le conteneur ou supprimer le bouton "Charger plus"
+  if (!append) {
+    container.innerHTML = '';
+  } else {
+    const oldButton = container.querySelector('.sc-load-more-button');
+    if (oldButton) {
+      oldButton.remove();
+    }
+  }
   
   // Créer un fragment pour optimiser les performances
   const fragment = document.createDocumentFragment();
   
   // Créer un élément pour chaque critique
   validReviews.forEach(review => {
-    const reviewItem = document.createElement('a');
+    const reviewItem = document.createElement('div');
     reviewItem.className = 'sc-review-item';
-    reviewItem.href = review.url || `${URLS.scProfile}/critiques`;
-    reviewItem.target = '_blank';
-    reviewItem.rel = 'noopener noreferrer';
+    
+    // Image de l'œuvre (si disponible)
+    if (review.image) {
+      const imageEl = document.createElement('img');
+      imageEl.src = review.image;
+      imageEl.alt = review.title || 'Critique';
+      imageEl.className = 'sc-review-image';
+      imageEl.loading = 'lazy';
+      imageEl.onerror = function() {
+        this.style.display = 'none';
+      };
+      reviewItem.appendChild(imageEl);
+    }
+    
+    // Lien wrapper
+    const linkEl = document.createElement('a');
+    linkEl.href = review.url || `${URLS.scProfile}/critiques`;
+    linkEl.target = '_blank';
+    linkEl.rel = 'noopener noreferrer';
+    linkEl.className = 'sc-review-content-wrapper';
     
     // Extraire et formater la date
     let dateText = 'non disponible';
@@ -811,7 +851,7 @@ function displayRecentReviews(reviews) {
     const content = review.content || review.comment || 'Pas de commentaire';
     
     // Créer le HTML de la critique
-    reviewItem.innerHTML = `
+    linkEl.innerHTML = `
       <div class="sc-review-header">
         <div class="sc-review-title">${escapeHtml(review.title)}${rating}</div>
       </div>
@@ -819,13 +859,68 @@ function displayRecentReviews(reviews) {
       <div class="sc-review-date">${escapeHtml(dateText)}</div>
     `;
     
+    reviewItem.appendChild(linkEl);
     fragment.appendChild(reviewItem);
   });
   
   // Ajouter toutes les critiques en une seule opération
   container.appendChild(fragment);
   
+  // Ajouter le bouton "Charger plus" si nécessaire
+  addLoadMoreButton(container);
+  
   console.log(`✅ ${validReviews.length} critiques affichées`);
+}
+
+/**
+ * Ajoute le bouton "Charger plus" si la pagination le permet
+ */
+function addLoadMoreButton(container) {
+  if (CONFIG.currentPage < CONFIG.totalPages) {
+    const buttonEl = document.createElement('button');
+    buttonEl.className = 'sc-load-more-button';
+    buttonEl.textContent = `Charger plus (${CONFIG.currentPage}/${CONFIG.totalPages})`;
+    buttonEl.onclick = loadMoreReviews;
+    container.appendChild(buttonEl);
+  }
+}
+
+/**
+ * Charge plus de critiques via pagination
+ */
+async function loadMoreReviews() {
+  const button = document.querySelector('.sc-load-more-button');
+  if (button) {
+    button.textContent = 'Chargement...';
+    button.disabled = true;
+  }
+  
+  try {
+    CONFIG.currentPage++;
+    const offset = (CONFIG.currentPage - 1) * CONFIG.reviewsPerPage;
+    
+    const response = await fetch(`${CONFIG.backendUrl}/senscritique?limit=${CONFIG.reviewsPerPage}&offset=${offset}`);
+    
+    if (!response.ok) {
+      throw new Error(`Erreur ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    if (data.pagination) {
+      CONFIG.totalPages = data.pagination.totalPages;
+    }
+    
+    // Ajouter les nouvelles critiques
+    displayRecentReviews(data.reviews || [], true);
+    
+  } catch (error) {
+    console.error('❌ Erreur chargement critiques supplémentaires:', error);
+    if (button) {
+      button.textContent = 'Erreur - Réessayer';
+      button.disabled = false;
+    }
+  }
 }
 
 function escapeHtml(text) {

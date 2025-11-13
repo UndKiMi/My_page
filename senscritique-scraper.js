@@ -850,22 +850,28 @@ async function fetchSensCritiqueReviews(username) {
       // Essayer plusieurs sélecteurs CSS pour trouver les critiques (par ordre de spécificité)
       // Commencer par le sélecteur le plus spécifique
       let reviewElements = document.querySelectorAll('article[data-testid="review-overview"]');
+      let usedSelector = 'article[data-testid="review-overview"]';
           
           // Si aucun élément trouvé, essayer d'autres sélecteurs
           if (reviewElements.length === 0) {
         reviewElements = document.querySelectorAll('[data-testid*="review"]');
+        usedSelector = '[data-testid*="review"]';
       }
       
       if (reviewElements.length === 0) {
         reviewElements = document.querySelectorAll('article');
+        usedSelector = 'article (fallback générique)';
       }
       
       if (reviewElements.length === 0) {
         const reviewLinks = document.querySelectorAll('a[href*="/critique/"]');
         if (reviewLinks.length > 0) {
           reviewElements = reviewLinks;
+          usedSelector = 'a[href*="/critique/"] (fallback liens)';
         }
           }
+          
+      console.log(`🎯 [Scraper] Sélecteur CSS utilisé: "${usedSelector}" (${reviewElements.length} éléments trouvés)`);
           
           // Traiter les éléments trouvés avec les sélecteurs CSS
           reviewElements.forEach((element) => {
@@ -1101,7 +1107,7 @@ async function fetchSensCritiqueReviews(username) {
       console.log(`✅ [Scraper] ${reviews.length} critique(s) extraite(s)`);
       if (reviews.length > 0) {
         console.log(`📊 [Scraper] Exemples de dates: ${reviews.slice(0, 3).map(r => r.date_raw || r.date || 'N/A').join(', ')}`);
-        console.log(`📊 [Scraper] Sélecteur utilisé pour les critiques`);
+        console.log(`📊 [Scraper] Premières critiques: ${reviews.slice(0, 3).map(r => r.title).join(', ')}`);
       }
       resolve(reviews);
     } catch (error) {

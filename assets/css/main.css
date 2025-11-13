@@ -880,6 +880,9 @@ header h1::after {
   border: 1px solid var(--border);
   transition: var(--transition);
   cursor: pointer;
+  display: flex;
+  gap: 15px;
+  align-items: flex-start;
   text-decoration: none;
   color: inherit;
   display: block;
@@ -892,6 +895,60 @@ header h1::after {
   border-color: var(--primary);
   background: rgba(79, 70, 229, 0.05);
   transform: translateX(3px);
+}
+
+/* Image de l'œuvre */
+.sc-review-image {
+  width: 60px;
+  height: 90px;
+  object-fit: cover;
+  border-radius: 6px;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  transition: transform 0.3s ease;
+}
+
+.sc-review-image:hover {
+  transform: scale(1.05);
+}
+
+/* Wrapper du contenu (à côté de l'image) */
+.sc-review-content-wrapper {
+  flex: 1;
+  text-decoration: none;
+  color: inherit;
+  display: block;
+}
+
+.sc-review-content-wrapper:hover .sc-review-title {
+  color: var(--primary);
+}
+
+/* Bouton "Charger plus" */
+.sc-load-more-button {
+  width: 100%;
+  padding: 12px 20px;
+  margin-top: 15px;
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  font-family: var(--font-sans);
+}
+
+.sc-load-more-button:hover:not(:disabled) {
+  background: var(--primary-light);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+}
+
+.sc-load-more-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .sc-review-header {

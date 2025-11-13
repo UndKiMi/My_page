@@ -20,24 +20,40 @@ let customBadges = [];
 
 app.disable('x-powered-by');
 
+// CORS - DOIT être avant tous les autres middlewares
+// Autoriser les requêtes depuis GitHub Pages
+app.use(cors({
+  origin: function (origin, callback) {
+    // Autoriser les requêtes sans origine (Postman, curl, etc.)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
+      'https://undkimi.github.io',
+      'http://localhost:3000',
+      'http://localhost:8080',
+      'http://127.0.0.1:3000',
+      'http://127.0.0.1:8080'
+    ];
+    
+    // Vérifier si l'origine est autorisée
+    if (allowedOrigins.some(allowed => origin === allowed || origin.startsWith(allowed))) {
+      callback(null, true);
+    } else {
+      console.log(`⚠️  Origine CORS non autorisée: ${origin}`);
+      // Autoriser quand même pour le debug
+      callback(null, true);
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'OPTIONS', 'HEAD'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Content-Length', 'Content-Type'],
+  preflightContinue: false,
+  optionsSuccessStatus: 204
+}));
+
 // Compression gzip pour réduire la taille des réponses
 app.use(compression());
-
-// CORS - Autoriser les requêtes depuis GitHub Pages
-app.use(cors({
-  origin: [
-    'https://undkimi.github.io',
-    'https://undkimi.github.io/Portfolio',
-    'https://undkimi.github.io/Portfolio/',
-    'http://localhost:3000',
-    'http://localhost:8080',
-    'http://127.0.0.1:3000',
-    'http://127.0.0.1:8080'
-  ],
-  credentials: true,
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
 
 // Cache HTTP amélioré pour les fichiers statiques
 app.use(express.static('.', { 

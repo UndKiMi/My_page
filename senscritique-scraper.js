@@ -96,6 +96,10 @@ function parseReviewsFromHTML(html) {
         const match = context.match(pattern);
         if (match && match[1] && match[1].trim().length > 20) {
           content = match[1].trim();
+          // Nettoyer tout HTML résiduel
+          content = content.replace(/<[^>]*>/g, '').trim();
+          // Nettoyer les espaces multiples
+          content = content.replace(/\s+/g, ' ').trim();
           break;
         }
       }
@@ -146,10 +150,29 @@ function parseReviewsFromHTML(html) {
           }
         }
         
+        // Nettoyer le titre de tout HTML résiduel
+        let cleanTitle = title.replace(/<[^>]*>/g, '').trim();
+        cleanTitle = cleanTitle.replace(/\s+/g, ' ').trim();
+        
+        // Nettoyer le contenu de tout HTML résiduel
+        let cleanContent = content;
+        if (cleanContent) {
+          cleanContent = cleanContent.replace(/<[^>]*>/g, '').trim();
+          cleanContent = cleanContent.replace(/\s+/g, ' ').trim();
+          // Limiter à 200 caractères
+          cleanContent = cleanContent.substring(0, 200) + (cleanContent.length > 200 ? '...' : '');
+        }
+        
+        // Vérifier qu'il n'y a pas de HTML résiduel
+        if (cleanContent && (cleanContent.includes('<') || cleanContent.includes('>') || cleanContent.includes('class='))) {
+          console.error('🚨 [Scraper] ALERTE : Du code HTML détecté dans parseReviewsFromHTML ! Nettoyage supplémentaire...');
+          cleanContent = cleanContent.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+        }
+        
         // Ajouter la critique
         const review = {
-          title,
-          content: content.substring(0, 200) + (content.length > 200 ? '...' : ''),
+          title: cleanTitle,
+          content: cleanContent || 'Pas de commentaire',
           date: normalizedDateText || null,
           date_raw: normalizedDateText || null,
           created_at: finalDate || null,
@@ -171,8 +194,18 @@ function parseReviewsFromHTML(html) {
     
       // Traiter les matches de texte
       for (const match of textMatches) {
-        const title = match[1]?.trim();
-        const content = match[2]?.trim();
+        let title = match[1]?.trim();
+        let content = match[2]?.trim();
+        
+        // Nettoyer le HTML des deux champs
+        if (title) {
+          title = title.replace(/<[^>]*>/g, '').trim();
+          title = title.replace(/\s+/g, ' ').trim();
+        }
+        if (content) {
+          content = content.replace(/<[^>]*>/g, '').trim();
+          content = content.replace(/\s+/g, ' ').trim();
+        }
         
         if (title && content && content.length > 20 && !title.includes('Critique de') && !title.includes('Sens Critique')) {
           // Chercher le lien associé
@@ -904,12 +937,15 @@ async function fetchSensCritiqueReviews(username) {
                         element.querySelector('[class*="note"]') ||
                         element.querySelector('[aria-label*="note"]');
         
-        // Extraire le titre
+        // Extraire le titre (texte pur uniquement)
         let title = null;
         if (titleEl) {
+          // IMPORTANT : Utiliser textContent pour récupérer UNIQUEMENT le texte sans balises HTML
           title = titleEl.textContent.trim();
           // Nettoyer le titre : enlever "Critique de" et "par KiMi_"
           title = title.replace(/^Critique de\s+/i, '').replace(/\s+par\s+KiMi_/i, '').trim();
+          // Nettoyer tout HTML résiduel
+          title = title.replace(/<[^>]*>/g, '').trim();
         }
         
         // Si pas de titre trouvé, chercher dans tout le texte de l'élément
@@ -918,13 +954,19 @@ async function fetchSensCritiqueReviews(username) {
           const titleMatch = allText.match(/Critique de ([^\n]+?)\s+par\s+KiMi_/i);
           if (titleMatch) {
             title = titleMatch[1].trim();
+            // Nettoyer tout HTML résiduel
+            title = title.replace(/<[^>]*>/g, '').trim();
           }
         }
         
-        // Extraire le contenu
+        // Extraire le contenu (texte pur uniquement, sans HTML)
         let content = '';
         if (contentEl) {
+          // IMPORTANT : Utiliser textContent pour récupérer UNIQUEMENT le texte sans balises HTML
           content = contentEl.textContent.trim();
+          
+          // Nettoyer les espaces multiples et retours à la ligne excessifs
+          content = content.replace(/\s+/g, ' ').trim();
         } else {
           // Si pas de contenu trouvé, chercher dans tout le texte
           const allText = element.textContent || '';
@@ -932,7 +974,17 @@ async function fetchSensCritiqueReviews(username) {
           const contentMatch = allText.match(/(?:Lire la critique|Par KiMi_)[\s\S]*?(.{30,500}?)(?:Par KiMi_|il y a|le \d+)/i);
           if (contentMatch) {
             content = contentMatch[1].trim();
+            // Nettoyer les espaces multiples
+            content = content.replace(/\s+/g, ' ').trim();
           }
+        }
+        
+        // Nettoyer tout HTML résiduel (au cas où)
+        content = content.replace(/<[^>]*>/g, '').trim();
+        
+        // Limiter à 200 caractères avec ellipse si trop long
+        if (content.length > 200) {
+          content = content.substring(0, 200) + '...';
         }
         
         // Utiliser la fonction dédiée pour extraire la date
@@ -984,16 +1036,39 @@ async function fetchSensCritiqueReviews(username) {
             }
           }
           
+                // Vérifier qu'il n'y a pas de HTML dans le contenu avant d'ajouter
+                if (content.includes('<') || content.includes('>') || content.includes('class=')) {
+                  console.error('🚨 [Scraper] ALERTE : Du code HTML détecté dans le contenu ! Nettoyage...');
+                  console.error(`🚨 [Scraper] Contenu problématique: "${content.substring(0, 100)}"`);
+                  // Nettoyer le HTML
+                  content = content.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+                }
+                
+                // Vérifier qu'il n'y a pas de HTML dans le titre
+                if (title && (title.includes('<') || title.includes('>') || title.includes('class='))) {
+                  console.error('🚨 [Scraper] ALERTE : Du code HTML détecté dans le titre ! Nettoyage...');
+                  console.error(`🚨 [Scraper] Titre problématique: "${title}"`);
+                  // Nettoyer le HTML
+                  title = title.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+                }
+                
                 reviews.push({
                   title,
-            content: content.length > 10 ? (content.substring(0, 200) + (content.length > 200 ? '...' : '')) : 'Pas de commentaire',
-            date: normalizedDateText || null,
-            date_raw: normalizedDateText || null,
+                  content: content.length > 10 ? content : 'Pas de commentaire',
+                  date: normalizedDateText || null,
+                  date_raw: normalizedDateText || null,
                   created_at: finalDate || null,
                   updated_at: finalDate || null,
-            url: url || `https://www.senscritique.com/${username}/critiques`,
+                  url: url || `https://www.senscritique.com/${username}/critiques`,
                   rating
                 });
+                
+                // Logs de vérification pour les 3 premières critiques
+                if (reviews.length <= 3) {
+                  console.log(`📝 [Scraper] Exemple de titre extrait: "${title}"`);
+                  console.log(`📝 [Scraper] Exemple de contenu extrait (50 premiers caractères): "${content.substring(0, 50)}..."`);
+                  console.log(`📝 [Scraper] Longueur du contenu: ${content.length} caractères`);
+                }
         }
       });
       
@@ -1034,10 +1109,29 @@ async function fetchSensCritiqueReviews(username) {
           const hasRating = ratingEl !== null;
           
           if (titleEl && (hasReviewTitle || hasContent || hasRating)) {
-            const title = titleEl.textContent.trim();
+            let title = titleEl.textContent.trim();
             // Nettoyer le titre si c'est "Critique de X par Y"
-            const cleanTitle = title.replace(/^Critique de\s+/i, '').replace(/\s+par\s+KiMi_/i, '').trim();
-            const content = contentEl ? contentEl.textContent.trim() : '';
+            title = title.replace(/^Critique de\s+/i, '').replace(/\s+par\s+KiMi_/i, '').trim();
+            // Nettoyer tout HTML résiduel
+            title = title.replace(/<[^>]*>/g, '').trim();
+            title = title.replace(/\s+/g, ' ').trim();
+            
+            let content = contentEl ? contentEl.textContent.trim() : '';
+            // Nettoyer tout HTML résiduel
+            content = content.replace(/<[^>]*>/g, '').trim();
+            content = content.replace(/\s+/g, ' ').trim();
+            
+            // Limiter le contenu à 200 caractères
+            if (content.length > 200) {
+              content = content.substring(0, 200) + '...';
+            }
+            
+            // Vérifier qu'il n'y a pas de HTML résiduel
+            if (content && (content.includes('<') || content.includes('>') || content.includes('class='))) {
+              console.error('🚨 [Scraper] ALERTE : Du code HTML détecté dans le contenu (fallback articles) !');
+              content = content.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+            }
+            
             const { dateText, dateISO } = extractDateFromElement(article);
             
             let finalDate = null;
@@ -1058,9 +1152,9 @@ async function fetchSensCritiqueReviews(username) {
             
             const url = linkEl ? `https://www.senscritique.com${linkEl.getAttribute('href')}` : null;
             
-            if (cleanTitle && content.length > 20 && !cleanTitle.includes('Sens Critique')) {
+            if (title && content.length > 20 && !title.includes('Sens Critique')) {
               // Vérifier si c'est un doublon
-              const isDuplicate = reviews.some(r => r.title === cleanTitle || r.content.substring(0, 50) === content.substring(0, 50));
+              const isDuplicate = reviews.some(r => r.title === title || r.content.substring(0, 50) === content.substring(0, 50));
               
               if (!isDuplicate) {
                 // Normaliser "jour" en "jours" si nécessaire
@@ -1072,9 +1166,15 @@ async function fetchSensCritiqueReviews(username) {
                   }
                 }
                 
+                // Vérifier qu'il n'y a pas de HTML résiduel avant d'ajouter
+                if (content && (content.includes('<') || content.includes('>') || content.includes('class='))) {
+                  console.error('🚨 [Scraper] ALERTE : Du code HTML détecté dans le contenu (fallback articles) avant push !');
+                  content = content.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+                }
+                
                 reviews.push({
-                  title: cleanTitle,
-                  content: content.substring(0, 200) + (content.length > 200 ? '...' : ''),
+                  title,
+                  content: content.length > 10 ? content : 'Pas de commentaire',
                   date: normalizedDateText || null,
                   date_raw: normalizedDateText || null,
                   created_at: finalDate || null,
